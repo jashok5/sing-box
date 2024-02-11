@@ -2,6 +2,7 @@ package outbound
 
 import (
 	"context"
+	"github.com/pires/go-proxyproto"
 	"net"
 	"net/netip"
 	"time"
@@ -30,6 +31,7 @@ type Direct struct {
 	fallbackDelay       time.Duration
 	overrideOption      int
 	overrideDestination M.Socksaddr
+	proxyProto          uint8
 	loopBack            *loopBackDetector
 }
 
@@ -51,10 +53,11 @@ func NewDirect(router adapter.Router, logger log.ContextLogger, tag string, opti
 		domainStrategy: dns.DomainStrategy(options.DomainStrategy),
 		fallbackDelay:  time.Duration(options.FallbackDelay),
 		dialer:         outboundDialer,
+		proxyProto:     options.ProxyProtocol,
 		loopBack:       newLoopBackDetector(),
 	}
-	if options.ProxyProtocol != 0 {
-		return nil, E.New("Proxy Protocol is deprecated and removed in sing-box 1.6.0")
+	if options.ProxyProtocol > 2 {
+		return nil, E.New("invalid proxy protocol option: ", options.ProxyProtocol)
 	}
 	if options.OverrideAddress != "" && options.OverridePort != 0 {
 		outbound.overrideOption = 1
@@ -71,6 +74,7 @@ func NewDirect(router adapter.Router, logger log.ContextLogger, tag string, opti
 
 func (h *Direct) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
 	ctx, metadata := adapter.AppendContext(ctx)
+	originDestination := metadata.Destination
 	metadata.Outbound = h.tag
 	metadata.Destination = destination
 	switch h.overrideOption {
@@ -94,11 +98,27 @@ func (h *Direct) DialContext(ctx context.Context, network string, destination M.
 	if err != nil {
 		return nil, err
 	}
-	return h.loopBack.NewConn(conn), nil
+	if h.proxyProto > 0 {
+		source := metadata.Source
+		if !source.IsValid() {
+			source = M.SocksaddrFromNet(conn.LocalAddr())
+		}
+		if originDestination.Addr.Is6() {
+			source = M.SocksaddrFrom(netip.AddrFrom16(source.Addr.As16()), source.Port)
+		}
+		header := proxyproto.HeaderProxyFromAddrs(h.proxyProto, source.TCPAddr(), originDestination.TCPAddr())
+		_, err = header.WriteTo(conn)
+		if err != nil {
+			conn.Close()
+			return nil, E.Cause(err, "write proxy protocol header")
+		}
+	}
+	return conn, nil
 }
 
 func (h *Direct) DialParallel(ctx context.Context, network string, destination M.Socksaddr, destinationAddresses []netip.Addr) (net.Conn, error) {
 	ctx, metadata := adapter.AppendContext(ctx)
+	originDestination := metadata.Destination
 	metadata.Outbound = h.tag
 	metadata.Destination = destination
 	switch h.overrideOption {
@@ -121,7 +141,26 @@ func (h *Direct) DialParallel(ctx context.Context, network string, destination M
 	} else {
 		domainStrategy = dns.DomainStrategy(metadata.InboundOptions.DomainStrategy)
 	}
-	return N.DialParallel(ctx, h.dialer, network, destination, destinationAddresses, domainStrategy == dns.DomainStrategyPreferIPv6, h.fallbackDelay)
+	conn, err := N.DialParallel(ctx, h.dialer, network, destination, destinationAddresses, domainStrategy == dns.DomainStrategyPreferIPv6, h.fallbackDelay)
+	if err != nil {
+		return nil, err
+	}
+	if h.proxyProto > 0 {
+		source := metadata.Source
+		if !source.IsValid() {
+			source = M.SocksaddrFromNet(conn.LocalAddr())
+		}
+		if originDestination.Addr.Is6() {
+			source = M.SocksaddrFrom(netip.AddrFrom16(source.Addr.As16()), source.Port)
+		}
+		header := proxyproto.HeaderProxyFromAddrs(h.proxyProto, source.TCPAddr(), originDestination.TCPAddr())
+		_, err = header.WriteTo(conn)
+		if err != nil {
+			conn.Close()
+			return nil, E.Cause(err, "write proxy protocol header")
+		}
+	}
+	return conn, nil
 }
 
 func (h *Direct) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {

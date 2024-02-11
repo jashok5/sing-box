@@ -1,6 +1,6 @@
 NAME = sing-box
 COMMIT = $(shell git rev-parse --short HEAD)
-TAGS_GO118 = with_gvisor,with_dhcp,with_wireguard,with_reality_server,with_clash_api
+TAGS_GO118 = with_gvisor,with_dhcp,with_wireguard,with_reality_server,with_clash_api,with_shadowsocksr
 TAGS_GO120 = with_quic,with_utls
 TAGS_GO121 = with_ech
 TAGS ?= $(TAGS_GO118),$(TAGS_GO120),$(TAGS_GO121)
