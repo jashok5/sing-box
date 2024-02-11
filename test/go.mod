@@ -14,7 +14,7 @@ require (
 	github.com/gofrs/uuid/v5 v5.0.0
 	github.com/sagernet/quic-go v0.41.0-beta.2
 	github.com/sagernet/sing v0.3.1-beta.1
-	github.com/sagernet/sing-dns v0.2.0-beta.2
+	github.com/sagernet/sing-dns v0.2.0-beta.3
 	github.com/sagernet/sing-quic v0.1.9-beta.1
 	github.com/sagernet/sing-shadowsocks v0.2.6
 	github.com/sagernet/sing-shadowsocks2 v0.2.0

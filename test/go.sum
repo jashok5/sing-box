@@ -137,6 +137,7 @@ github.com/sagernet/sing v0.3.1-beta.1/go.mod h1:9pfuAH6mZfgnz/YjP6xu5sxx882rfyj
 github.com/sagernet/sing-dns v0.1.11 h1:PPrMCVVrAeR3f5X23I+cmvacXJ+kzuyAsBiWyUKhGSE=
 github.com/sagernet/sing-dns v0.1.11/go.mod h1:zJ/YjnYB61SYE+ubMcMqVdpaSvsyQ2iShQGO3vuLvvE=
 github.com/sagernet/sing-dns v0.2.0-beta.2/go.mod h1:IxOqfSb6Zt6UVCy8fJpDxb2XxqzHUytNqeOuJfaiLu8=
+github.com/sagernet/sing-dns v0.2.0-beta.3/go.mod h1:IxOqfSb6Zt6UVCy8fJpDxb2XxqzHUytNqeOuJfaiLu8=
 github.com/sagernet/sing-mux v0.1.6-0.20231208180947-9053c29513a2 h1:rRlYQPbMKmzKX+43XC04gEQvxc45/AxfteRWfcl2/rw=
 github.com/sagernet/sing-mux v0.1.6-0.20231208180947-9053c29513a2/go.mod h1:IdSrwwqBeJTrjLZJRFXE+F8mYXNI/rPAjzlgTFuEVmo=
 github.com/sagernet/sing-mux v0.2.0/go.mod h1:khzr9AOPocLa+g53dBplwNDz4gdsyx/YM3swtAhlkHQ=
