@@ -14,3 +14,9 @@
 /*.xcframework/
 .DS_Store
 /config.d/
+/sing-box_linux_arm64
+/sing-box_linux_amd64
+/sing-box_darwin_amd64
+/sing-box_darwin_arm64
+/sing-box_windows_amd64.exe
+/sing-box_windows_arm64.exe
