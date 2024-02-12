@@ -206,19 +206,19 @@ update:
 build_all_platform: build_linux_amd64 build_linux_arm64 build_windows_amd64 build_windows_arm64 build_darwin_amd64 build_darwin_arm64
 
 build_linux_amd64:
-	GOOS=linux GOARCH=amd64 go build $(MAIN_PARAMS) -o sing-box_linux_amd64 $(MAIN)
+	GOOS=linux GOARCH=amd64 GOAMD64=v1 go build $(PARAMS) -tags "$(TAGS_GO118),$(TAGS_GO120)" -o sing-box_linux_amd64 $(MAIN)
 
 build_linux_arm64:
-	GOOS=linux GOARCH=arm64 go build $(MAIN_PARAMS) -o sing-box_linux_arm64 $(MAIN)
+	GOOS=linux GOARCH=arm64 go build $(PARAMS) -tags "$(TAGS_GO118),$(TAGS_GO120)" -o sing-box_linux_arm64 $(MAIN)
 
 build_windows_amd64:
-	GOOS=windows GOARCH=amd64 go build $(MAIN_PARAMS) -o sing-box_windows_amd64.exe $(MAIN)
+	GOOS=windows GOARCH=amd64 GOAMD64=v1 go build $(PARAMS) -tags "$(TAGS_GO118),$(TAGS_GO120)" -o sing-box_windows_amd64.exe $(MAIN)
 
 build_windows_arm64:
-	GOOS=windows GOARCH=arm64 go build $(MAIN_PARAMS) -o sing-box_windows_arm64.exe $(MAIN)
+	GOOS=windows GOARCH=arm64 go build $(PARAMS) -tags "$(TAGS_GO118),$(TAGS_GO120)" -o sing-box_windows_arm64.exe $(MAIN)
 
 build_darwin_amd64:
-	GOOS=darwin GOARCH=amd64 go build $(MAIN_PARAMS) -o sing-box_darwin_amd64 $(MAIN)
+	GOOS=darwin GOARCH=amd64 GOAMD64=v1 go build $(PARAMS) -tags "$(TAGS_GO118),$(TAGS_GO120)" -o sing-box_darwin_amd64 $(MAIN)
 
 build_darwin_arm64:
-	GOOS=darwin GOARCH=arm64 go build $(MAIN_PARAMS) -o sing-box_darwin_arm64 $(MAIN)
+	GOOS=darwin GOARCH=arm64 go build $(PARAMS) -tags "$(TAGS_GO118),$(TAGS_GO120)" -o sing-box_darwin_arm64 $(MAIN)
