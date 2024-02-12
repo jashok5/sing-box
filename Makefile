@@ -203,6 +203,8 @@ update:
 	git reset FETCH_HEAD --hard
 	git clean -fdx
 
+build_all_platform: build_linux_amd64 build_linux_arm64 build_windows_amd64 build_windows_arm64 build_darwin_amd64 build_darwin_arm64
+
 build_linux_amd64:
 	GOOS=linux GOARCH=amd64 go build $(MAIN_PARAMS) -o sing-box_linux_amd64 $(MAIN)
 
