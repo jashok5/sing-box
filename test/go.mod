@@ -14,7 +14,7 @@ require (
 	github.com/gofrs/uuid/v5 v5.0.0
 	github.com/sagernet/quic-go v0.41.0-beta.2
 	github.com/sagernet/sing v0.3.1-beta.1
-	github.com/sagernet/sing-dns v0.2.0-beta.3
+	github.com/sagernet/sing-dns v0.2.0-beta.5
 	github.com/sagernet/sing-quic v0.1.9-beta.1
 	github.com/sagernet/sing-shadowsocks v0.2.6
 	github.com/sagernet/sing-shadowsocks2 v0.2.0
@@ -74,12 +74,12 @@ require (
 	github.com/quic-go/qtls-go1-20 v0.4.1 // indirect
 	github.com/sagernet/bbolt v0.0.0-20231014093535-ea5cb2fe9f0a // indirect
 	github.com/sagernet/cloudflare-tls v0.0.0-20231208171750-a4483c1b7cd1 // indirect
-	github.com/sagernet/gvisor v0.0.0-20231209105102-8d27a30e436e // indirect
+	github.com/sagernet/gvisor v0.0.0-20240214044702-a3d61928a32f // indirect
 	github.com/sagernet/netlink v0.0.0-20220905062125-8043b4a9aa97 // indirect
 	github.com/sagernet/reality v0.0.0-20230406110435-ee17307e7691 // indirect
 	github.com/sagernet/sing-mux v0.2.0 // indirect
 	github.com/sagernet/sing-shadowtls v0.1.4 // indirect
-	github.com/sagernet/sing-tun v0.2.2-beta.1 // indirect
+	github.com/sagernet/sing-tun v0.2.2-beta.3 // indirect
 	github.com/sagernet/sing-vmess v0.1.8 // indirect
 	github.com/sagernet/smux v0.0.0-20231208180855-7041f6ea79e7 // indirect
 	github.com/sagernet/tfo-go v0.0.0-20231209031829-7b5343ac1dc6 // indirect
