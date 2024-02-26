@@ -1268,19 +1268,3 @@ func (r *Router) notifyWindowsPowerEvent(event int) {
 		_ = r.ResetNetwork()
 	}
 }
-
-func (r *Router) notifyWindowsPowerEvent(event int) {
-	switch event {
-	case winpowrprof.EVENT_SUSPEND:
-		r.pauseManager.DevicePause()
-		_ = r.ResetNetwork()
-	case winpowrprof.EVENT_RESUME:
-		if !r.pauseManager.IsDevicePaused() {
-			return
-		}
-		fallthrough
-	case winpowrprof.EVENT_RESUME_AUTOMATIC:
-		r.pauseManager.DeviceWake()
-		_ = r.ResetNetwork()
-	}
-}
