@@ -1245,7 +1245,27 @@ func (r *Router) updateWIFIState() {
 	state := r.platformInterface.ReadWIFIState()
 	if state != r.wifiState {
 		r.wifiState = state
-		r.logger.Info("updated WIFI state: SSID=", state.SSID, ", BSSID=", state.BSSID)
+		if state.SSID == "" && state.BSSID == "" {
+			r.logger.Info("updated WIFI state: disconnected")
+		} else {
+			r.logger.Info("updated WIFI state: SSID=", state.SSID, ", BSSID=", state.BSSID)
+		}
+	}
+}
+
+func (r *Router) notifyWindowsPowerEvent(event int) {
+	switch event {
+	case winpowrprof.EVENT_SUSPEND:
+		r.pauseManager.DevicePause()
+		_ = r.ResetNetwork()
+	case winpowrprof.EVENT_RESUME:
+		if !r.pauseManager.IsDevicePaused() {
+			return
+		}
+		fallthrough
+	case winpowrprof.EVENT_RESUME_AUTOMATIC:
+		r.pauseManager.DeviceWake()
+		_ = r.ResetNetwork()
 	}
 }
 
