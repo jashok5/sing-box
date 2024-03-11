@@ -107,7 +107,8 @@ func buildiOS() {
 	args := []string{
 		"bind",
 		"-v",
-		"-target", "ios,iossimulator,tvos,tvossimulator,macos",
+		//"-target", "ios,iossimulator,tvos,tvossimulator,macos",
+		"-target", "ios,iossimulator",
 		"-libname=box",
 	}
 	if !debugEnabled {
