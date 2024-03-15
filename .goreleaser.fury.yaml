@@ -17,7 +17,6 @@ builds:
       - with_reality_server
       - with_acme
       - with_clash_api
-      - with_shadowsocksr
     env:
       - CGO_ENABLED=0
     targets:
