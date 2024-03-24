@@ -71,6 +71,7 @@ func (c *InboundContext) ResetRuleCacheContext() {
 	c.SourcePortMatch = false
 	c.DestinationAddressMatch = false
 	c.DestinationPortMatch = false
+	c.DidMatch = false
 }
 
 type inboundContextKey struct{}
