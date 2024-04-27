@@ -12,10 +12,10 @@ require (
 	github.com/docker/docker v24.0.7+incompatible
 	github.com/docker/go-connections v0.4.0
 	github.com/gofrs/uuid/v5 v5.1.0
-	github.com/sagernet/quic-go v0.42.0-beta.2
-	github.com/sagernet/sing v0.4.0-beta.15
+	github.com/sagernet/quic-go v0.42.0-beta.3
+	github.com/sagernet/sing v0.4.0-beta.18
 	github.com/sagernet/sing-dns v0.2.0-beta.16
-	github.com/sagernet/sing-quic v0.1.12-beta.1
+	github.com/sagernet/sing-quic v0.1.13-beta.1
 	github.com/sagernet/sing-shadowsocks v0.2.6
 	github.com/sagernet/sing-shadowsocks2 v0.2.0
 	github.com/spyzhov/ajson v0.9.0
@@ -59,7 +59,7 @@ require (
 	github.com/libdns/libdns v0.2.2 // indirect
 	github.com/logrusorgru/aurora v2.0.3+incompatible // indirect
 	github.com/mholt/acmez v1.2.0 // indirect
-	github.com/miekg/dns v1.1.58 // indirect
+	github.com/miekg/dns v1.1.59 // indirect
 	github.com/moby/term v0.5.0 // indirect
 	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/onsi/ginkgo/v2 v2.9.7 // indirect
@@ -94,12 +94,12 @@ require (
 	go.uber.org/zap v1.27.0 // indirect
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba // indirect
 	golang.org/x/crypto v0.22.0 // indirect
-	golang.org/x/exp v0.0.0-20240325151524-a685a6edb6d8 // indirect
-	golang.org/x/mod v0.16.0 // indirect
+	golang.org/x/exp v0.0.0-20240416160154-fe59bbe5cc7f // indirect
+	golang.org/x/mod v0.17.0 // indirect
 	golang.org/x/sys v0.19.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
-	golang.org/x/tools v0.19.0 // indirect
+	golang.org/x/tools v0.20.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240227224415-6ceb2ff114de // indirect
 	google.golang.org/grpc v1.63.2 // indirect
 	google.golang.org/protobuf v1.33.0 // indirect
