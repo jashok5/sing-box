@@ -2,6 +2,141 @@
 icon: material/alert-decagram
 ---
 
+#### 1.10.0-alpha.7
+
+* Fixes and improvements
+
+#### 1.10.0-alpha.5
+
+* Improve auto-redirect **1**
+
+**1**:
+
+nftables support and DNS hijacking has been added.
+
+Tun inbounds with `auto_route` and `auto_redirect` now works as expected on routers **without intervention**.
+
+#### 1.10.0-alpha.4
+
+* Fix auto-redirect **1**
+* Improve auto-route on linux **2**
+
+**1**:
+
+Tun inbounds with `auto_route` and `auto_redirect` now works as expected on routers.
+
+**2**:
+
+Tun inbounds with `auto_route` and `strict_route` now works as expected on routers and servers,
+but the usages of [exclude_interface](/configuration/inbound/tun/#exclude_interface) need to be updated.
+
+#### 1.10.0-alpha.2
+
+* Move auto-redirect to Tun **1**
+* Fixes and improvements
+
+**1**:
+
+Linux support are added.
+
+See [Tun](/configuration/inbound/tun/#auto_redirect).
+
+#### 1.10.0-alpha.1
+
+* Add tailing comma support in JSON configuration
+* Add simple auto-redirect for Android **1**
+* Add BitTorrent sniffer **2**
+
+**1**:
+
+It allows you to use redirect inbound in the sing-box Android client
+and automatically configures IPv4 TCP redirection via su.
+
+This may alleviate the symptoms of some OCD patients who think that
+redirect can effectively save power compared to the system HTTP Proxy.
+
+See [Redirect](/configuration/inbound/redirect/).
+
+**2**:
+
+See [Protocol Sniff](/configuration/route/sniff/).
+
+### 1.9.0
+
+* Fixes and improvements
+
+Important changes since 1.8:
+
+* `domain_suffix` behavior update **1**
+* `process_path` format update on Windows **2**
+* Add address filter DNS rule items **3**
+* Add support for `client-subnet` DNS options **4**
+* Add rejected DNS response cache support **5**
+* Add `bypass_domain` and `search_domain` platform HTTP proxy options **6**
+* Fix missing `rule_set_ipcidr_match_source` item in DNS rules **7**
+* Handle Windows power events
+* Always disable cache for fake-ip DNS transport if `dns.independent_cache` disabled
+* Improve DNS truncate behavior
+* Update Hysteria protocol
+* Update quic-go to v0.43.1
+* Update gVisor to 20240422.0
+* Mitigating TunnelVision attacks **8**
+
+**1**:
+
+See [Migration](/migration/#domain_suffix-behavior-update).
+
+**2**:
+
+See [Migration](/migration/#process_path-format-update-on-windows).
+
+**3**:
+
+The new DNS feature allows you to more precisely bypass Chinese websites via **DNS leaks**. Do not use plain local DNS
+if using this method.
+
+See [Address Filter Fields](/configuration/dns/rule#address-filter-fields).
+
+[Client example](/manual/proxy/client#traffic-bypass-usage-for-chinese-users) updated.
+
+**4**:
+
+See [DNS](/configuration/dns), [DNS Server](/configuration/dns/server) and [DNS Rules](/configuration/dns/rule).
+
+Since this feature makes the scenario mentioned in `alpha.1` no longer leak DNS requests,
+the [Client example](/manual/proxy/client#traffic-bypass-usage-for-chinese-users) has been updated.
+
+**5**:
+
+The new feature allows you to cache the check results of
+[Address filter DNS rule items](/configuration/dns/rule/#address-filter-fields) until expiration.
+
+**6**:
+
+See [TUN](/configuration/inbound/tun) inbound.
+
+**7**:
+
+See [DNS Rule](/configuration/dns/rule/).
+
+**8**:
+
+See [TunnelVision](/manual/misc/tunnelvision).
+
+#### 1.9.0-rc.22
+
+* Fixes and improvements
+
+#### 1.9.0-rc.20
+
+* Prioritize `*_route_address` in linux auto-route
+* Fix `*_route_address` in darwin auto-route
+
+#### 1.8.14
+
+* Fix hysteria2 panic
+* Fixes and improvements
+
 #### 1.9.0-rc.18
 
 * Add custom prefix support in EDNS0 client subnet options
@@ -222,7 +357,7 @@ See [Address Filter Fields](/configuration/dns/rule#address-filter-fields).
 
 * Fixes and improvements
 
-#### 1.8.0
+### 1.8.0
 
 * Fixes and improvements
 
@@ -513,7 +648,7 @@ New commands manage GeoIP, Geosite and rule set resources, and help you migrate 
 
 Logical rules in route rules, DNS rules, and the new headless rule now allow nesting of logical rules.
 
-#### 1.7.0
+### 1.7.0
 
 * Fixes and improvements
 
@@ -673,7 +808,7 @@ Introduced in V2Ray 5.10.0.
 
 The new HTTPUpgrade transport has better performance than WebSocket and is better suited for CDN abuse.
 
-#### 1.6.0
+### 1.6.0
 
 * Fixes and improvements
 
@@ -852,7 +987,7 @@ introduce new issues.
 None of the existing Golang BBR congestion control implementations have been reviewed or unit tested.
 This update is intended to address the multi-send defects of the old implementation and may introduce new issues.
 
-#### 1.5.0
+### 1.5.0
 
 * Fixes and improvements
 
@@ -1046,7 +1181,7 @@ All inbounds and outbounds are supported, including `Naiveproxy`, `Hysteria`, `T
 
 * Fixes and improvements
 
-#### 1.4.0
+### 1.4.0
 
 * Fix bugs and update dependencies
 
@@ -1188,7 +1323,7 @@ The old testflight link and app are no longer valid.
 
 * Fixes and improvements
 
-#### 1.3.0
+### 1.3.0
 
 * Fix bugs and update dependencies
 
@@ -1380,7 +1515,7 @@ to `domain` rule.
 * Flush DNS cache for macOS when tun start/close
 * Fix tun's DNS hijacking compatibility with systemd-resolved
 
-#### 1.2.0
+### 1.2.0
 
 * Fix bugs and update dependencies
 
