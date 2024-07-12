@@ -1,7 +1,6 @@
 NAME = sing-box
 COMMIT = $(shell git rev-parse --short HEAD)
-TAGS_GO118 = with_gvisor,with_dhcp,with_wireguard,with_reality_server,with_clash_api,with_shadowsocksr
-TAGS_GO120 = with_quic,with_utls
+TAGS_GO120 = with_gvisor,with_dhcp,with_wireguard,with_reality_server,with_clash_api,with_quic,with_utls,with_shadowsocksr
 TAGS_GO121 = with_ech
 TAGS ?= $(TAGS_GO118),$(TAGS_GO120),$(TAGS_GO121)
 TAGS_TEST ?= with_gvisor,with_quic,with_wireguard,with_grpc,with_ech,with_utls,with_reality_server
@@ -20,13 +19,9 @@ PREFIX ?= $(shell go env GOPATH)
 build:
 	go build $(MAIN_PARAMS) $(MAIN)
 
-ci_build_go118:
-	go build $(PARAMS) $(MAIN)
-	go build $(PARAMS) -tags "$(TAGS_GO118)" $(MAIN)
-
 ci_build_go120:
 	go build $(PARAMS) $(MAIN)
-	go build $(PARAMS) -tags "$(TAGS_GO118),$(TAGS_GO120)" $(MAIN)
+	go build $(PARAMS) -tags "$(TAGS_GO120)" $(MAIN)
 
 ci_build:
 	go build $(PARAMS) $(MAIN)
@@ -197,13 +192,15 @@ lib_install:
 	go install -v github.com/sagernet/gomobile/cmd/gobind@v0.1.3
 
 docs:
-	mkdocs serve
+	venv/bin/mkdocs serve
 
 publish_docs:
-	mkdocs gh-deploy -m "Update" --force --ignore-version --no-history
+	venv/bin/mkdocs gh-deploy -m "Update" --force --ignore-version --no-history
 
 docs_install:
-	pip install --force-reinstall mkdocs-material=="9.*" mkdocs-static-i18n=="1.2.*"
+	python -m venv venv
+	source ./venv/bin/activate && pip install --force-reinstall mkdocs-material=="9.*" mkdocs-static-i18n=="1.2.*"
+
 clean:
 	rm -rf bin dist sing-box
 	rm -f $(shell go env GOPATH)/sing-box

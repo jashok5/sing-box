@@ -2,6 +2,124 @@
 icon: material/alert-decagram
 ---
 
+#### 1.10.0-alpha.20
+
+* Add DTLS sniffer
+* Fixes and improvements
+
+#### 1.10.0-alpha.19
+
+* Add `rule-set decompile` command
+* Add IP address support for `rule-set match` command
+* Fixes and improvements
+
+#### 1.10.0-alpha.18
+
+* Add new `inline` rule-set type **1**
+* Add auto reload support for local rule-set
+* Update fsnotify usages **2**
+* Fixes and improvements
+
+**1**:
+
+The new [rule-set] type inline (which also becomes the default type)
+allows you to write headless rules directly without creating a rule-set file.
+
+[rule-set]: /configuration/rule-set/
+
+**2**:
+
+sing-box now uses fsnotify correctly and will not cancel watching
+if the target file is deleted or recreated via rename (e.g. `mv`).
+
+This affects all path options that support reload, including
+`tls.certificate_path`, `tls.key_path`, `tls.ech.key_path` and `rule_set.path`.
+
+#### 1.10.0-alpha.17
+
+* Some chaotic changes **1**
+* `rule_set_ipcidr_match_source` rule items are renamed **2**
+* Add `rule_set_ip_cidr_accept_empty` DNS address filter rule item **3**
+* Update quic-go to v0.45.1
+* Fixes and improvements
+
+**1**:
+
+Something may be broken, please actively report problems with this version.
+
+**2**:
+
+`rule_set_ipcidr_match_source` route and DNS rule items are renamed to
+`rule_set_ip_cidr_match_source` and will be remove in sing-box 1.11.0.
+
+**3**:
+
+See [DNS Rule](/configuration/dns/rule/#rule_set_ip_cidr_accept_empty).
+
+#### 1.10.0-alpha.16
+
+* Add custom options for `auto-route` and `auto-redirect` **1**
+* Fixes and improvements
+
+**1**:
+
+See [iproute2_table_index](/configuration/inbound/tun/#iproute2_table_index),
+[iproute2_rule_index](/configuration/inbound/tun/#iproute2_rule_index),
+[auto_redirect_input_mark](/configuration/inbound/tun/#auto_redirect_input_mark) and
+[auto_redirect_output_mark](/configuration/inbound/tun/#auto_redirect_output_mark).
+
+#### 1.10.0-alpha.13
+
+* TUN address fields are merged **1**
+* Add route address set support for auto-redirect **2**
+
+**1**:
+
+See [Migration](/migration/#tun-address-fields-are-merged).
+
+**2**:
+
+The new feature will allow you to configure the destination IP CIDR rules
+in the specified rule-sets to the firewall automatically.
+
+Specified or unspecified destinations will bypass the sing-box routes to get better performance
+(for example, keep hardware offloading of direct traffics on the router).
+
+See [route_address_set](/configuration/inbound/tun/#route_address_set)
+and [route_exclude_address_set](/configuration/inbound/tun/#route_exclude_address_set).
+
+#### 1.10.0-alpha.12
+
+* Fix auto-redirect not configuring nftables forward chain correctly
+* Fixes and improvements
+
+### 1.9.3
+
+* Fixes and improvements
+
+#### 1.10.0-alpha.10
+
+* Fixes and improvements
+
+### 1.9.2
+
+* Fixes and improvements
+
+#### 1.10.0-alpha.8
+
+* Drop support for go1.18 and go1.19 **1**
+* Update quic-go to v0.45.0
+* Update Hysteria2 BBR congestion control
+* Fixes and improvements
+
+**1**:
+
+Due to maintenance difficulties, sing-box 1.10.0 requires at least Go 1.20 to compile.
+
+### 1.9.1
+
+* Fixes and improvements
+
 #### 1.10.0-alpha.7
 
 * Fixes and improvements
@@ -364,7 +482,7 @@ See [Address Filter Fields](/configuration/dns/rule#address-filter-fields).
 Important changes since 1.7:
 
 * Migrate cache file from Clash API to independent options **1**
-* Introducing [Rule Set](/configuration/rule-set/) **2**
+* Introducing [rule-set](/configuration/rule-set/) **2**
 * Add `sing-box geoip`, `sing-box geosite` and `sing-box rule-set` commands **3**
 * Allow nested logical rules **4**
 * Independent `source_ip_is_private` and `ip_is_private` rules **5**
@@ -384,7 +502,7 @@ See [Cache File](/configuration/experimental/cache-file/) and
 
 **2**:
 
-Rule set is independent collections of rules that can be compiled into binaries to improve performance.
+rule-set is independent collections of rules that can be compiled into binaries to improve performance.
 Compared to legacy GeoIP and Geosite resources,
 it can include more types of rules, load faster,
 use less memory, and update automatically.
@@ -392,16 +510,16 @@ use less memory, and update automatically.
 See [Route#rule_set](/configuration/route/#rule_set),
 [Route Rule](/configuration/route/rule/),
 [DNS Rule](/configuration/dns/rule/),
-[Rule Set](/configuration/rule-set/),
+[rule-set](/configuration/rule-set/),
 [Source Format](/configuration/rule-set/source-format/) and
 [Headless Rule](/configuration/rule-set/headless-rule/).
 
-For GEO resources migration, see [Migrate GeoIP to rule sets](/migration/#migrate-geoip-to-rule-sets) and
-[Migrate Geosite to rule sets](/migration/#migrate-geosite-to-rule-sets).
+For GEO resources migration, see [Migrate GeoIP to rule-sets](/migration/#migrate-geoip-to-rule-sets) and
+[Migrate Geosite to rule-sets](/migration/#migrate-geosite-to-rule-sets).
 
 **3**:
 
-New commands manage GeoIP, Geosite and rule set resources, and help you migrate GEO resources to rule sets.
+New commands manage GeoIP, Geosite and rule-set resources, and help you migrate GEO resources to rule-sets.
 
 **4**:
 
@@ -598,7 +716,7 @@ This change is intended to break incorrect usage and essentially requires no act
 
 **1**:
 
-Now the rules in the `rule_set` rule item can be logically considered to be merged into the rule using rule sets,
+Now the rules in the `rule_set` rule item can be logically considered to be merged into the rule using rule-sets,
 rather than completely following the AND logic.
 
 #### 1.8.0-alpha.5
@@ -614,7 +732,7 @@ Since GeoIP was deprecated, we made this rule independent, see [Migration](/migr
 #### 1.8.0-alpha.1
 
 * Migrate cache file from Clash API to independent options **1**
-* Introducing [Rule Set](/configuration/rule-set/) **2**
+* Introducing [rule-set](/configuration/rule-set/) **2**
 * Add `sing-box geoip`, `sing-box geosite` and `sing-box rule-set` commands **3**
 * Allow nested logical rules **4**
 
@@ -625,7 +743,7 @@ See [Cache File](/configuration/experimental/cache-file/) and
 
 **2**:
 
-Rule set is independent collections of rules that can be compiled into binaries to improve performance.
+rule-set is independent collections of rules that can be compiled into binaries to improve performance.
 Compared to legacy GeoIP and Geosite resources,
 it can include more types of rules, load faster,
 use less memory, and update automatically.
@@ -633,16 +751,16 @@ use less memory, and update automatically.
 See [Route#rule_set](/configuration/route/#rule_set),
 [Route Rule](/configuration/route/rule/),
 [DNS Rule](/configuration/dns/rule/),
-[Rule Set](/configuration/rule-set/),
+[rule-set](/configuration/rule-set/),
 [Source Format](/configuration/rule-set/source-format/) and
 [Headless Rule](/configuration/rule-set/headless-rule/).
 
-For GEO resources migration, see [Migrate GeoIP to rule sets](/migration/#migrate-geoip-to-rule-sets) and
-[Migrate Geosite to rule sets](/migration/#migrate-geosite-to-rule-sets).
+For GEO resources migration, see [Migrate GeoIP to rule-sets](/migration/#migrate-geoip-to-rule-sets) and
+[Migrate Geosite to rule-sets](/migration/#migrate-geosite-to-rule-sets).
 
 **3**:
 
-New commands manage GeoIP, Geosite and rule set resources, and help you migrate GEO resources to rule sets.
+New commands manage GeoIP, Geosite and rule-set resources, and help you migrate GEO resources to rule-sets.
 
 **4**:
 

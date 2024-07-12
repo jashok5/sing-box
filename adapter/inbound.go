@@ -51,7 +51,9 @@ type InboundContext struct {
 
 	// rule cache
 
-	IPCIDRMatchSource            bool
+	IPCIDRMatchSource bool
+	IPCIDRAcceptEmpty bool
+
 	SourceAddressMatch           bool
 	SourcePortMatch              bool
 	DestinationAddressMatch      bool
@@ -67,6 +69,7 @@ func (c *InboundContext) ResetRuleCache() {
 
 func (c *InboundContext) ResetRuleCacheContext() {
 	c.IPCIDRMatchSource = false
+	c.IPCIDRAcceptEmpty = false
 	c.SourceAddressMatch = false
 	c.SourcePortMatch = false
 	c.DestinationAddressMatch = false

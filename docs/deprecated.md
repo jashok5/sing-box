@@ -4,6 +4,20 @@ icon: material/delete-alert
 
 # Deprecated Feature List
 
+## 1.10.0
+
+#### TUN address fields are merged
+
+`inet4_address` and `inet6_address` are merged into `address`,
+`inet4_route_address` and `inet6_route_address` are merged into `route_address`,
+`inet4_route_exclude_address` and `inet6_route_exclude_address` are merged into `route_exclude_address`.
+
+Old fields are deprecated and will be removed in sing-box 1.11.0.
+
+#### Drop support for go1.18 and go1.19
+
+Due to maintenance difficulties, sing-box 1.10.0 requires at least Go 1.20 to compile.
+
 ## 1.8.0
 
 #### Cache file and related features in Clash API
@@ -19,7 +33,7 @@ The maxmind GeoIP National Database, as an IP classification database,
 is not entirely suitable for traffic bypassing,
 and all existing implementations suffer from high memory usage and difficult management.
 
-sing-box 1.8.0 introduces [Rule Set](/configuration/rule-set/), which can completely replace GeoIP,
+sing-box 1.8.0 introduces [rule-set](/configuration/rule-set/), which can completely replace GeoIP,
 check [Migration](/migration/#migrate-geoip-to-rule-sets).
 
 #### Geosite
@@ -29,7 +43,7 @@ Geosite is deprecated and may be removed in the future.
 Geosite, the `domain-list-community` project maintained by V2Ray as an early traffic bypassing solution,
 suffers from a number of problems, including lack of maintenance, inaccurate rules, and difficult management.
 
-sing-box 1.8.0 introduces [Rule Set](/configuration/rule-set/), which can completely replace Geosite,
+sing-box 1.8.0 introduces [rule-set](/configuration/rule-set/), which can completely replace Geosite,
 check [Migration](/migration/#migrate-geosite-to-rule-sets).
 
 ## 1.6.0
