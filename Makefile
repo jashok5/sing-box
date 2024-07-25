@@ -19,6 +19,7 @@ PREFIX ?= $(shell go env GOPATH)
 build:
 	go build $(MAIN_PARAMS) $(MAIN)
 
+
 ci_build_go120:
 	go build $(PARAMS) $(MAIN)
 	go build $(PARAMS) -tags "$(TAGS_GO120)" $(MAIN)
