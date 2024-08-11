@@ -2,9 +2,20 @@
 icon: material/alert-decagram
 ---
 
-#### 1.10.0-alpha.24
+#### 1.10.0-alpha.29
 
+* Update quic-go to v0.46.0
 * Fixes and improvements
+
+#### 1.10.0-alpha.25
+
+* Add AdGuard DNS Filter support **1**
+
+**1**:
+
+The new feature allows you to use AdGuard DNS Filter lists in a sing-box without AdGuard Home. 
+
+See [AdGuard DNS Filter](/configuration/rule-set/adguard/).
 
 #### 1.10.0-alpha.23
 
