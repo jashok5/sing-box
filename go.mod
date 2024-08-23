@@ -11,7 +11,6 @@ require (
 	github.com/cloudflare/circl v1.3.7
 	github.com/cretz/bine v0.2.0
 	github.com/go-chi/chi/v5 v5.0.12
-	github.com/go-chi/cors v1.2.1
 	github.com/go-chi/render v1.0.3
 	github.com/gofrs/uuid/v5 v5.2.0
 	github.com/insomniacslk/dhcp v0.0.0-20231206064809-8c70d406f6d2
@@ -25,15 +24,16 @@ require (
 	github.com/pires/go-proxyproto v0.7.0
 	github.com/sagernet/bbolt v0.0.0-20231014093535-ea5cb2fe9f0a
 	github.com/sagernet/cloudflare-tls v0.0.0-20231208171750-a4483c1b7cd1
+	github.com/sagernet/cors v1.2.1
 	github.com/sagernet/fswatch v0.1.1
 	github.com/sagernet/gomobile v0.1.3
 	github.com/sagernet/gvisor v0.0.0-20240428053021-e691de28565f
-	github.com/sagernet/quic-go v0.46.0-beta.2
+	github.com/sagernet/quic-go v0.46.0-beta.4
 	github.com/sagernet/reality v0.0.0-20230406110435-ee17307e7691
-	github.com/sagernet/sing v0.5.0-alpha.15
+	github.com/sagernet/sing v0.5.0-beta.1
 	github.com/sagernet/sing-dns v0.3.0-beta.14
 	github.com/sagernet/sing-mux v0.2.0
-	github.com/sagernet/sing-quic v0.2.0-beta.12
+	github.com/sagernet/sing-quic v0.3.0-beta.2
 	github.com/sagernet/sing-shadowsocks v0.2.7
 	github.com/sagernet/sing-shadowsocks2 v0.2.0
 	github.com/sagernet/sing-shadowtls v0.1.4
