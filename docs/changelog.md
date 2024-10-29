@@ -2,14 +2,179 @@
 icon: material/alert-decagram
 ---
 
-!!! failure "Help needed"
+#### 1.11.0-alpha.1
 
-    Due to problems with our Apple developer account, sing-box apps on Apple platforms are temporarily unavailable for download or update.
+* Update quic-go to v0.48.0
+* Fixes and improvements
 
-    If your company or organization is willing to help us return to the App Store, please [contact us](mailto:contact@sagernet.org).
+### 1.10.1
 
-#### 1.10.0-beta.4
+* Fixes and improvements
 
+### 1.10.0
+
+Important changes since 1.9:
+
+* Introducing auto-redirect **1**
+* Add AdGuard DNS Filter support **2**
+* TUN address fields are merged **3**
+* Add custom options for `auto-route` and `auto-redirect` **4**
+* Drop support for go1.18 and go1.19 **5**
+* Add tailing comma support in JSON configuration
+* Improve sniffers **6**
+* Add new `inline` rule-set type **7**
+* Add access control options for Clash API **8**
+* Add `rule_set_ip_cidr_accept_empty` DNS address filter rule item **9**
+* Add auto reload support for local rule-set
+* Update fsnotify usages **10**
+* Add IP address support for `rule-set match` command
+* Add `rule-set decompile` command
+* Add `process_path_regex` rule item
+* Update uTLS to v1.6.7 **11**
+* Optimize memory usages of rule-sets **12**
+
+**1**:
+
+The new auto-redirect feature allows TUN to automatically
+configure connection redirection to improve proxy performance.
+
+When auto-redirect is enabled, new route address set options will allow you to 
+automatically configure destination IP CIDR rules from a specified rule set to the firewall.
+
+Specified or unspecified destinations will bypass the sing-box routes to get better performance
+(for example, keep hardware offloading of direct traffics on the router).
+
+See [TUN](/configuration/inbound/tun).
+
+**2**:
+
+The new feature allows you to use AdGuard DNS Filter lists in a sing-box without AdGuard Home.
+
+See [AdGuard DNS Filter](/configuration/rule-set/adguard/).
+
+**3**:
+
+See [Migration](/migration/#tun-address-fields-are-merged).
+
+**4**:
+
+See [iproute2_table_index](/configuration/inbound/tun/#iproute2_table_index),
+[iproute2_rule_index](/configuration/inbound/tun/#iproute2_rule_index),
+[auto_redirect_input_mark](/configuration/inbound/tun/#auto_redirect_input_mark) and
+[auto_redirect_output_mark](/configuration/inbound/tun/#auto_redirect_output_mark).
+
+**5**:
+
+Due to maintenance difficulties, sing-box 1.10.0 requires at least Go 1.20 to compile.
+
+**6**:
+
+BitTorrent, DTLS, RDP, SSH sniffers are added.
+
+Now the QUIC sniffer can correctly extract the server name from Chromium requests and
+can identify common QUIC clients, including
+Chromium, Safari, Firefox, quic-go (including uquic disguised as Chrome).
+
+**7**:
+
+The new [rule-set](/configuration/rule-set/) type inline (which also becomes the default type)
+allows you to write headless rules directly without creating a rule-set file.
+
+**8**:
+
+With the new access control options, not only can you allow Clash dashboards
+to access the Clash API on your local network,
+you can also manually limit the websites that can access the API instead of allowing everyone.
+
+See [Clash API](/configuration/experimental/clash-api/).
+
+**9**:
+
+See [DNS Rule](/configuration/dns/rule/#rule_set_ip_cidr_accept_empty).
+
+**10**:
+
+sing-box now uses fsnotify correctly and will not cancel watching
+if the target file is deleted or recreated via rename (e.g. `mv`).
+
+This affects all path options that support reload, including
+`tls.certificate_path`, `tls.key_path`, `tls.ech.key_path` and `rule_set.path`.
+
+**11**:
+
+Some legacy chrome fingerprints have been removed and will fallback to chrome,
+see [utls](/configuration/shared/tls#utls).
+
+**12**:
+
+See [Source Format](/configuration/rule-set/source-format/#version).
+
+### 1.9.7
+
+* Fixes and improvements
+
+#### 1.10.0-beta.11
+
+* Update uTLS to v1.6.7 **1**
+
+**1**:
+
+Some legacy chrome fingerprints have been removed and will fallback to chrome,
+see [utls](/configuration/shared/tls#utls).
+
+#### 1.10.0-beta.10
+
+* Add `process_path_regex` rule item
+* Fixes and improvements
+
+_The macOS standalone versions of sing-box (>=1.9.5/<1.10.0-beta.11) now silently fail and require manual granting of
+the **Full Disk Access** permission to system extension to start, probably due to Apple's changed security policy. We
+will prompt users about this in feature versions._
+
+### 1.9.6
+
+* Fixes and improvements
+
+### 1.9.5
+
+* Update quic-go to v0.47.0
+* Fix direct dialer not resolving domain
+* Fix no error return when empty DNS cache retrieved
+* Fix build with go1.23
+* Fix stream sniffer
+* Fix bad redirect in clash-api
+* Fix wireguard events chan leak
+* Fix cached conn eats up read deadlines
+* Fix disconnected interface selected as default in windows
+* Update Bundle Identifiers for Apple platform clients **1**
+
+**1**:
+
+See [Migration](/migration/#bundle-identifier-updates-in-apple-platform-clients).
+
+We are still working on getting all sing-box apps back on the App Store, which should be completed within a week
+(SFI on the App Store and others on TestFlight are already available).
+
+#### 1.10.0-beta.8
+
+* Fixes and improvements
+
+_With the help of a netizen, we are in the process of getting sing-box apps back on the App Store, which should be
+completed within a month (TestFlight is already available)._
+
+#### 1.10.0-beta.7
+
+* Update quic-go to v0.47.0
+* Fixes and improvements
+
+#### 1.10.0-beta.6
+
+* Add RDP sniffer
+* Fixes and improvements
+
+#### 1.10.0-beta.5
+
+* Add PNA support for [Clash API](/configuration/experimental/clash-api/)
 * Fixes and improvements
 
 #### 1.10.0-beta.3
@@ -36,6 +201,11 @@ icon: material/alert-decagram
 * Fix panic caused by rule-set generation of duplicate keys for `domain_suffix`
 * Fix UDP connnection leak when sniffing
 * Fixes and improvements
+
+_Due to problems with our Apple developer account,
+sing-box apps on Apple platforms are temporarily unavailable for download or update.
+If your company or organization is willing to help us return to the App Store,
+please [contact us](mailto:contact@sagernet.org)._
 
 #### 1.10.0-alpha.29
 
@@ -95,10 +265,8 @@ See [Source Format](/configuration/rule-set/source-format/#version).
 
 **1**:
 
-The new [rule-set] type inline (which also becomes the default type)
+The new [rule-set](/configuration/rule-set/) type inline (which also becomes the default type)
 allows you to write headless rules directly without creating a rule-set file.
-
-[rule-set]: /configuration/rule-set/
 
 **2**:
 

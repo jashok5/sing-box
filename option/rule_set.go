@@ -14,9 +14,9 @@ import (
 )
 
 type _RuleSet struct {
-	Type          string        `json:"type"`
+	Type          string        `json:"type,omitempty"`
 	Tag           string        `json:"tag"`
-	Format        string        `json:"format"`
+	Format        string        `json:"format,omitempty"`
 	InlineOptions PlainRuleSet  `json:"-"`
 	LocalOptions  LocalRuleSet  `json:"-"`
 	RemoteOptions RemoteRuleSet `json:"-"`
@@ -48,17 +48,6 @@ func (r *RuleSet) UnmarshalJSON(bytes []byte) error {
 	if r.Tag == "" {
 		return E.New("missing tag")
 	}
-	if r.Type != C.RuleSetTypeInline {
-		switch r.Format {
-		case "":
-			return E.New("missing format")
-		case C.RuleSetFormatSource, C.RuleSetFormatBinary:
-		default:
-			return E.New("unknown rule-set format: " + r.Format)
-		}
-	} else {
-		r.Format = ""
-	}
 	var v any
 	switch r.Type {
 	case "", C.RuleSetTypeInline:
@@ -70,6 +59,17 @@ func (r *RuleSet) UnmarshalJSON(bytes []byte) error {
 		v = &r.RemoteOptions
 	default:
 		return E.New("unknown rule-set type: " + r.Type)
+	}
+	if r.Type != C.RuleSetTypeInline {
+		switch r.Format {
+		case "":
+			return E.New("missing format")
+		case C.RuleSetFormatSource, C.RuleSetFormatBinary:
+		default:
+			return E.New("unknown rule-set format: " + r.Format)
+		}
+	} else {
+		r.Format = ""
 	}
 	err = UnmarshallExcluded(bytes, (*_RuleSet)(r), v)
 	if err != nil {
@@ -144,24 +144,25 @@ func (r HeadlessRule) IsValid() bool {
 }
 
 type DefaultHeadlessRule struct {
-	QueryType       Listable[DNSQueryType] `json:"query_type,omitempty"`
-	Network         Listable[string]       `json:"network,omitempty"`
-	Domain          Listable[string]       `json:"domain,omitempty"`
-	DomainSuffix    Listable[string]       `json:"domain_suffix,omitempty"`
-	DomainKeyword   Listable[string]       `json:"domain_keyword,omitempty"`
-	DomainRegex     Listable[string]       `json:"domain_regex,omitempty"`
-	SourceIPCIDR    Listable[string]       `json:"source_ip_cidr,omitempty"`
-	IPCIDR          Listable[string]       `json:"ip_cidr,omitempty"`
-	SourcePort      Listable[uint16]       `json:"source_port,omitempty"`
-	SourcePortRange Listable[string]       `json:"source_port_range,omitempty"`
-	Port            Listable[uint16]       `json:"port,omitempty"`
-	PortRange       Listable[string]       `json:"port_range,omitempty"`
-	ProcessName     Listable[string]       `json:"process_name,omitempty"`
-	ProcessPath     Listable[string]       `json:"process_path,omitempty"`
-	PackageName     Listable[string]       `json:"package_name,omitempty"`
-	WIFISSID        Listable[string]       `json:"wifi_ssid,omitempty"`
-	WIFIBSSID       Listable[string]       `json:"wifi_bssid,omitempty"`
-	Invert          bool                   `json:"invert,omitempty"`
+	QueryType        Listable[DNSQueryType] `json:"query_type,omitempty"`
+	Network          Listable[string]       `json:"network,omitempty"`
+	Domain           Listable[string]       `json:"domain,omitempty"`
+	DomainSuffix     Listable[string]       `json:"domain_suffix,omitempty"`
+	DomainKeyword    Listable[string]       `json:"domain_keyword,omitempty"`
+	DomainRegex      Listable[string]       `json:"domain_regex,omitempty"`
+	SourceIPCIDR     Listable[string]       `json:"source_ip_cidr,omitempty"`
+	IPCIDR           Listable[string]       `json:"ip_cidr,omitempty"`
+	SourcePort       Listable[uint16]       `json:"source_port,omitempty"`
+	SourcePortRange  Listable[string]       `json:"source_port_range,omitempty"`
+	Port             Listable[uint16]       `json:"port,omitempty"`
+	PortRange        Listable[string]       `json:"port_range,omitempty"`
+	ProcessName      Listable[string]       `json:"process_name,omitempty"`
+	ProcessPath      Listable[string]       `json:"process_path,omitempty"`
+	ProcessPathRegex Listable[string]       `json:"process_path_regex,omitempty"`
+	PackageName      Listable[string]       `json:"package_name,omitempty"`
+	WIFISSID         Listable[string]       `json:"wifi_ssid,omitempty"`
+	WIFIBSSID        Listable[string]       `json:"wifi_bssid,omitempty"`
+	Invert           bool                   `json:"invert,omitempty"`
 
 	DomainMatcher *domain.Matcher `json:"-"`
 	SourceIPSet   *netipx.IPSet   `json:"-"`

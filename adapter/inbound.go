@@ -2,13 +2,11 @@ package adapter
 
 import (
 	"context"
-	"net"
 	"net/netip"
 
 	"github.com/sagernet/sing-box/common/process"
 	"github.com/sagernet/sing-box/option"
 	M "github.com/sagernet/sing/common/metadata"
-	N "github.com/sagernet/sing/common/network"
 )
 
 type Inbound interface {
@@ -17,11 +15,14 @@ type Inbound interface {
 	Tag() string
 }
 
-type InjectableInbound interface {
+type TCPInjectableInbound interface {
 	Inbound
-	Network() []string
-	NewConnection(ctx context.Context, conn net.Conn, metadata InboundContext) error
-	NewPacketConnection(ctx context.Context, conn N.PacketConn, metadata InboundContext) error
+	ConnectionHandlerEx
+}
+
+type UDPInjectableInbound interface {
+	Inbound
+	PacketConnectionHandlerEx
 }
 
 type InboundContext struct {
@@ -43,10 +44,14 @@ type InboundContext struct {
 
 	// cache
 
-	InboundDetour        string
-	LastInbound          string
-	OriginDestination    M.Socksaddr
-	InboundOptions       option.InboundOptions
+	InboundDetour     string
+	LastInbound       string
+	OriginDestination M.Socksaddr
+	// Deprecated
+	InboundOptions            option.InboundOptions
+	UDPDisableDomainUnmapping bool
+	DNSServer                 string
+
 	DestinationAddresses []netip.Addr
 	SourceGeoIPCode      string
 	GeoIPCode            string
