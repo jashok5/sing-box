@@ -2,6 +2,45 @@
 icon: material/alert-decagram
 ---
 
+#### 1.12.0-beta.1
+
+* Fixes and improvements
+
+#### 1.12.0-alpha.18
+
+* Add wildcard SNI support for ShadowTLS inbound **1**
+* Fixes and improvements
+
+**1**:
+
+See [ShadowTLS](/configuration/inbound/shadowtls/#wildcard_sni).
+
+#### 1.12.0-alpha.17
+
+* Add NTP sniffer **1**
+* Fixes and improvements
+
+**1**:
+
+See [Protocol Sniff](/configuration/route/sniff/).
+
+#### 1.12.0-alpha.16
+
+* Update `domain_resolver` behavior **1**
+* Fixes and improvements
+
+**1**:
+
+`route.default_domain_resolver` or `outbound.domain_resolver` is now optional when only one DNS server is configured.
+
+See [Dial Fields](/configuration/shared/dial/#domain_resolver).
+
+### 1.11.5
+
+* Fixes and improvements
+
+_We are temporarily unable to update sing-box apps on the App Store because the reviewer mistakenly found that we violated the rules (TestFlight users are not affected)._
+
 #### 1.12.0-alpha.13
 
 * Move `predefined` DNS server to DNS rule action **1**

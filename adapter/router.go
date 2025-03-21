@@ -21,7 +21,6 @@ type Router interface {
 	ConnectionRouter
 	PreMatch(metadata InboundContext) error
 	ConnectionRouterEx
-
 	RuleSet(tag string) (RuleSet, bool)
 	NeedWIFIState() bool
 	Rules() []Rule

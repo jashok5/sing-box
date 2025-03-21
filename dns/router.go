@@ -263,20 +263,7 @@ func (r *Router) Exchange(ctx context.Context, message *mDNS.Msg, options adapte
 							return nil, tun.ErrDrop
 						}
 					case *R.RuleActionPredefined:
-						return &mDNS.Msg{
-							MsgHdr: mDNS.MsgHdr{
-								Id:                 message.Id,
-								Response:           true,
-								Authoritative:      true,
-								RecursionDesired:   true,
-								RecursionAvailable: true,
-								Rcode:              action.Rcode,
-							},
-							Question: message.Question,
-							Answer:   action.Answer,
-							Ns:       action.Ns,
-							Extra:    action.Extra,
-						}, nil
+						return action.Response(message), nil
 					}
 				}
 				var responseCheck func(responseAddrs []netip.Addr) bool
@@ -383,7 +370,8 @@ func (r *Router) Lookup(ctx context.Context, domain string, options adapter.DNSQ
 		ruleIndex = -1
 		for {
 			dnsCtx := adapter.OverrideContext(ctx)
-			transport, rule, ruleIndex = r.matchDNS(ctx, false, ruleIndex, true, &options)
+			dnsOptions := options
+			transport, rule, ruleIndex = r.matchDNS(ctx, false, ruleIndex, true, &dnsOptions)
 			if rule != nil {
 				switch action := rule.Action().(type) {
 				case *R.RuleActionReject:
@@ -416,10 +404,10 @@ func (r *Router) Lookup(ctx context.Context, domain string, options adapter.DNSQ
 					return rule.MatchAddressLimit(metadata)
 				}
 			}
-			if options.Strategy == C.DomainStrategyAsIS {
-				options.Strategy = r.defaultDomainStrategy
+			if dnsOptions.Strategy == C.DomainStrategyAsIS {
+				dnsOptions.Strategy = r.defaultDomainStrategy
 			}
-			responseAddrs, err = r.client.Lookup(dnsCtx, transport, domain, options, responseCheck)
+			responseAddrs, err = r.client.Lookup(dnsCtx, transport, domain, dnsOptions, responseCheck)
 			if responseCheck == nil || err == nil {
 				break
 			}
@@ -461,6 +449,6 @@ func (r *Router) LookupReverseMapping(ip netip.Addr) (string, bool) {
 func (r *Router) ResetNetwork() {
 	r.ClearCache()
 	for _, transport := range r.transport.Transports() {
-		transport.Reset()
+		transport.Close()
 	}
 }

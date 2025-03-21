@@ -23,7 +23,6 @@ import (
 	"github.com/sagernet/sing/common/bufio"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/logger"
-	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 	sHTTP "github.com/sagernet/sing/protocol/http"
 
@@ -89,7 +88,7 @@ func NewHTTP3(ctx context.Context, logger log.ContextLogger, tag string, options
 	if err != nil {
 		return nil, err
 	}
-	serverAddr := options.ServerOptions.Build()
+	serverAddr := options.DNSServerAddressOptions.Build()
 	if serverAddr.Port == 0 {
 		serverAddr.Port = 443
 	}
@@ -101,8 +100,7 @@ func NewHTTP3(ctx context.Context, logger log.ContextLogger, tag string, options
 		headers:          headers,
 		transport: &http3.Transport{
 			Dial: func(ctx context.Context, addr string, tlsCfg *tls.STDConfig, cfg *quic.Config) (quic.EarlyConnection, error) {
-				destinationAddr := M.ParseSocksaddr(addr)
-				conn, dialErr := transportDialer.DialContext(ctx, N.NetworkUDP, destinationAddr)
+				conn, dialErr := transportDialer.DialContext(ctx, N.NetworkUDP, serverAddr)
 				if dialErr != nil {
 					return nil, dialErr
 				}
@@ -113,8 +111,12 @@ func NewHTTP3(ctx context.Context, logger log.ContextLogger, tag string, options
 	}, nil
 }
 
-func (t *HTTP3Transport) Reset() {
-	t.transport.Close()
+func (t *HTTP3Transport) Start(stage adapter.StartStage) error {
+	return nil
+}
+
+func (t *HTTP3Transport) Close() error {
+	return t.transport.Close()
 }
 
 func (t *HTTP3Transport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error) {

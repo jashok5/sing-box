@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/common/dialer"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/dns"
 	"github.com/sagernet/sing-box/log"
@@ -42,7 +43,7 @@ func NewUDP(ctx context.Context, logger log.ContextLogger, tag string, options o
 	if err != nil {
 		return nil, err
 	}
-	serverAddr := options.ServerOptions.Build()
+	serverAddr := options.DNSServerAddressOptions.Build()
 	if serverAddr.Port == 0 {
 		serverAddr.Port = 53
 	}
@@ -64,11 +65,19 @@ func NewUDPRaw(logger logger.ContextLogger, adapter dns.TransportAdapter, dialer
 	}
 }
 
-func (t *UDPTransport) Reset() {
+func (t *UDPTransport) Start(stage adapter.StartStage) error {
+	if stage != adapter.StartStateStart {
+		return nil
+	}
+	return dialer.InitializeDetour(t.dialer)
+}
+
+func (t *UDPTransport) Close() error {
 	t.access.Lock()
 	defer t.access.Unlock()
 	close(t.done)
 	t.done = make(chan struct{})
+	return nil
 }
 
 func (t *UDPTransport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error) {
@@ -110,13 +119,6 @@ func (t *UDPTransport) exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.M
 		conn.access.Lock()
 		delete(conn.callbacks, messageId)
 		conn.access.Unlock()
-		callback.access.Lock()
-		select {
-		case <-callback.done:
-		default:
-			close(callback.done)
-		}
-		callback.access.Unlock()
 	}()
 	rawMessage, err := exMessage.PackBuffer(buffer.FreeBytes())
 	if err != nil {

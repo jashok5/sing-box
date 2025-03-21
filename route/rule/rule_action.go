@@ -368,6 +368,8 @@ func (r *RuleActionSniff) build() error {
 			r.StreamSniffers = append(r.StreamSniffers, sniff.SSH)
 		case C.ProtocolRDP:
 			r.StreamSniffers = append(r.StreamSniffers, sniff.RDP)
+		case C.ProtocolNTP:
+			r.PacketSniffers = append(r.PacketSniffers, sniff.NTP)
 		default:
 			return E.New("unknown sniffer: ", name)
 		}
@@ -441,4 +443,33 @@ func (r *RuleActionPredefined) String() string {
 	options = append(options, common.Map(r.Ns, dns.RR.String)...)
 	options = append(options, common.Map(r.Extra, dns.RR.String)...)
 	return F.ToString("predefined(", strings.Join(options, ","), ")")
+}
+
+func (r *RuleActionPredefined) Response(request *dns.Msg) *dns.Msg {
+	return &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 request.Id,
+			Response:           true,
+			Authoritative:      true,
+			RecursionDesired:   true,
+			RecursionAvailable: true,
+			Rcode:              r.Rcode,
+		},
+		Question: request.Question,
+		Answer:   rewriteRecords(r.Answer, request.Question[0]),
+		Ns:       rewriteRecords(r.Ns, request.Question[0]),
+		Extra:    rewriteRecords(r.Extra, request.Question[0]),
+	}
+}
+
+func rewriteRecords(records []dns.RR, question dns.Question) []dns.RR {
+	return common.Map(records, func(it dns.RR) dns.RR {
+		if strings.HasPrefix(it.Header().Name, "*") {
+			if strings.HasSuffix(question.Name, it.Header().Name[1:]) {
+				it = dns.Copy(it)
+				it.Header().Name = question.Name
+			}
+		}
+		return it
+	})
 }

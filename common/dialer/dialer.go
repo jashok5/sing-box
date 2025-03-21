@@ -52,7 +52,7 @@ func NewWithOptions(options Options) (N.Dialer, error) {
 			return nil, err
 		}
 	}
-	if options.RemoteIsDomain && (dialOptions.Detour == "" || options.ResolverOnDetour) {
+	if options.RemoteIsDomain && (dialOptions.Detour == "" || options.ResolverOnDetour || dialOptions.DomainResolver != nil && dialOptions.DomainResolver.Server != "") {
 		networkManager := service.FromContext[adapter.NetworkManager](options.Context)
 		dnsTransport := service.FromContext[adapter.DNSTransportManager](options.Context)
 		var defaultOptions adapter.NetworkOptions
@@ -104,7 +104,12 @@ func NewWithOptions(options Options) (N.Dialer, error) {
 		} else if options.NewDialer {
 			return nil, E.New("missing domain resolver for domain server address")
 		} else {
-			deprecated.Report(options.Context, deprecated.OptionMissingDomainResolver)
+			transports := dnsTransport.Transports()
+			if len(transports) < 2 {
+				dnsQueryOptions.Transport = dnsTransport.Default()
+			} else {
+				deprecated.Report(options.Context, deprecated.OptionMissingDomainResolver)
+			}
 		}
 		dialer = NewResolveDialer(
 			options.Context,

@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/common/dialer"
 	"github.com/sagernet/sing-box/common/tls"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/dns"
@@ -52,7 +53,7 @@ func NewTLS(ctx context.Context, logger log.ContextLogger, tag string, options o
 	if err != nil {
 		return nil, err
 	}
-	serverAddr := options.ServerOptions.Build()
+	serverAddr := options.DNSServerAddressOptions.Build()
 	if serverAddr.Port == 0 {
 		serverAddr.Port = 853
 	}
@@ -65,13 +66,21 @@ func NewTLS(ctx context.Context, logger log.ContextLogger, tag string, options o
 	}, nil
 }
 
-func (t *TLSTransport) Reset() {
+func (t *TLSTransport) Start(stage adapter.StartStage) error {
+	if stage != adapter.StartStateStart {
+		return nil
+	}
+	return dialer.InitializeDetour(t.dialer)
+}
+
+func (t *TLSTransport) Close() error {
 	t.access.Lock()
 	defer t.access.Unlock()
 	for connection := t.connections.Front(); connection != nil; connection = connection.Next() {
 		connection.Value.Close()
 	}
 	t.connections.Init()
+	return nil
 }
 
 func (t *TLSTransport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error) {

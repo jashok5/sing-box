@@ -25,7 +25,7 @@ ci_build_go120:
 	go build $(PARAMS) $(MAIN) && \
 	go build $(PARAMS) -tags "$(TAGS_GO120)" $(MAIN)
 
-ci_build:
+ci_build:MAIN_PARAMS
 	export GOTOOLCHAIN=local && \
 	go build $(PARAMS) $(MAIN) && \
 	go build $(MAIN_PARAMS) $(MAIN)
@@ -230,11 +230,11 @@ lib_ios:
 
 lib:
 	go run ./cmd/internal/build_libbox -target android
-	go run ./cmd/internal/build_libbox -target apple
+	go run ./cmd/internal/build_libbox -target apple -platform ios
 
 lib_install:
-	go install -v github.com/sagernet/gomobile/cmd/gomobile@v0.1.4
-	go install -v github.com/sagernet/gomobile/cmd/gobind@v0.1.4
+	go install -v github.com/sagernet/gomobile/cmd/gomobile@v0.1.5
+	go install -v github.com/sagernet/gomobile/cmd/gobind@v0.1.5
 
 docs:
 	venv/bin/mkdocs serve
@@ -270,7 +270,7 @@ build_windows_arm64:
 	GOOS=windows GOARCH=arm64 go build $(MAIN_PARAMS) -o sing-box_windows_arm64.exe $(MAIN)
 
 build_darwin_amd64:
-	GOOS=darwin GOARCH=amd64 GOAMD64=v1 go build $(MAIN_PARAMS) -o sing-box_darwin_amd64 $(MAIN)
+	GOOS=darwin GOARCH=amd64 GOAMD64=v1 go build $() -o sing-box_darwin_amd64 $(MAIN)
 
 build_darwin_arm64:
 	GOOS=darwin GOARCH=arm64 go build $(MAIN_PARAMS) -o sing-box_darwin_arm64 $(MAIN)
