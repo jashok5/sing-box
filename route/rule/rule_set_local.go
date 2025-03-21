@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/sagernet/fswatch"
 	"github.com/sagernet/sing-box/adapter"
@@ -26,19 +27,21 @@ import (
 var _ adapter.RuleSet = (*LocalRuleSet)(nil)
 
 type LocalRuleSet struct {
-	router     adapter.Router
-	logger     logger.Logger
-	tag        string
-	rules      []adapter.HeadlessRule
-	metadata   adapter.RuleSetMetadata
-	fileFormat string
-	watcher    *fswatch.Watcher
-	refs       atomic.Int32
+	ctx            context.Context
+	logger         logger.Logger
+	tag            string
+	rules          []adapter.HeadlessRule
+	metadata       adapter.RuleSetMetadata
+	fileFormat     string
+	watcher        *fswatch.Watcher
+	callbackAccess sync.Mutex
+	callbacks      list.List[adapter.RuleSetUpdateCallback]
+	refs           atomic.Int32
 }
 
-func NewLocalRuleSet(ctx context.Context, router adapter.Router, logger logger.Logger, options option.RuleSet) (*LocalRuleSet, error) {
+func NewLocalRuleSet(ctx context.Context, logger logger.Logger, options option.RuleSet) (*LocalRuleSet, error) {
 	ruleSet := &LocalRuleSet{
-		router:     router,
+		ctx:        ctx,
 		logger:     logger,
 		tag:        options.Tag,
 		fileFormat: options.Format,
@@ -52,14 +55,12 @@ func NewLocalRuleSet(ctx context.Context, router adapter.Router, logger logger.L
 			return nil, err
 		}
 	} else {
-		err := ruleSet.reloadFile(filemanager.BasePath(ctx, options.LocalOptions.Path))
+		filePath := filemanager.BasePath(ctx, options.LocalOptions.Path)
+		filePath, _ = filepath.Abs(filePath)
+		err := ruleSet.reloadFile(filePath)
 		if err != nil {
 			return nil, err
 		}
-	}
-	if options.Type == C.RuleSetTypeLocal {
-		var watcher *fswatch.Watcher
-		filePath, _ := filepath.Abs(options.LocalOptions.Path)
 		watcher, err := fswatch.NewWatcher(fswatch.Options{
 			Path: []string{filePath},
 			Callback: func(path string) {
@@ -85,7 +86,7 @@ func (s *LocalRuleSet) String() string {
 	return strings.Join(F.MapToString(s.rules), " ")
 }
 
-func (s *LocalRuleSet) StartContext(ctx context.Context, startContext adapter.RuleSetStartContext) error {
+func (s *LocalRuleSet) StartContext(ctx context.Context, startContext *adapter.HTTPStartContext) error {
 	if s.watcher != nil {
 		err := s.watcher.Start()
 		if err != nil {
@@ -96,32 +97,33 @@ func (s *LocalRuleSet) StartContext(ctx context.Context, startContext adapter.Ru
 }
 
 func (s *LocalRuleSet) reloadFile(path string) error {
-	var plainRuleSet option.PlainRuleSet
+	var ruleSet option.PlainRuleSetCompat
 	switch s.fileFormat {
 	case C.RuleSetFormatSource, "":
 		content, err := os.ReadFile(path)
 		if err != nil {
 			return err
 		}
-		compat, err := json.UnmarshalExtended[option.PlainRuleSetCompat](content)
+		ruleSet, err = json.UnmarshalExtended[option.PlainRuleSetCompat](content)
 		if err != nil {
 			return err
 		}
-		plainRuleSet, err = compat.Upgrade()
-		if err != nil {
-			return err
-		}
+
 	case C.RuleSetFormatBinary:
 		setFile, err := os.Open(path)
 		if err != nil {
 			return err
 		}
-		plainRuleSet, err = srs.Read(setFile, false)
+		ruleSet, err = srs.Read(setFile, false)
 		if err != nil {
 			return err
 		}
 	default:
 		return E.New("unknown rule-set format: ", s.fileFormat)
+	}
+	plainRuleSet, err := ruleSet.Upgrade()
+	if err != nil {
+		return err
 	}
 	return s.reloadRules(plainRuleSet.Rules)
 }
@@ -130,7 +132,7 @@ func (s *LocalRuleSet) reloadRules(headlessRules []option.HeadlessRule) error {
 	rules := make([]adapter.HeadlessRule, len(headlessRules))
 	var err error
 	for i, ruleOptions := range headlessRules {
-		rules[i], err = NewHeadlessRule(s.router, ruleOptions)
+		rules[i], err = NewHeadlessRule(s.ctx, ruleOptions)
 		if err != nil {
 			return E.Cause(err, "parse rule_set.rules.[", i, "]")
 		}
@@ -141,6 +143,12 @@ func (s *LocalRuleSet) reloadRules(headlessRules []option.HeadlessRule) error {
 	metadata.ContainsIPCIDRRule = hasHeadlessRule(headlessRules, isIPCIDRHeadlessRule)
 	s.rules = rules
 	s.metadata = metadata
+	s.callbackAccess.Lock()
+	callbacks := s.callbacks.Array()
+	s.callbackAccess.Unlock()
+	for _, callback := range callbacks {
+		callback(s)
+	}
 	return nil
 }
 
@@ -173,10 +181,15 @@ func (s *LocalRuleSet) Cleanup() {
 }
 
 func (s *LocalRuleSet) RegisterCallback(callback adapter.RuleSetUpdateCallback) *list.Element[adapter.RuleSetUpdateCallback] {
-	return nil
+	s.callbackAccess.Lock()
+	defer s.callbackAccess.Unlock()
+	return s.callbacks.PushBack(callback)
 }
 
 func (s *LocalRuleSet) UnregisterCallback(element *list.Element[adapter.RuleSetUpdateCallback]) {
+	s.callbackAccess.Lock()
+	defer s.callbackAccess.Unlock()
+	s.callbacks.Remove(element)
 }
 
 func (s *LocalRuleSet) Close() error {

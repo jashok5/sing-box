@@ -21,17 +21,21 @@ const (
 const (
 	RuleSetVersion1 = 1 + iota
 	RuleSetVersion2
+	RuleSetVersion3
+	RuleSetVersionCurrent = RuleSetVersion3
 )
 
 const (
-	RuleActionTypeRoute     = "route"
-	RuleActionTypeReturn    = "return"
-	RuleActionTypeReject    = "reject"
-	RuleActionTypeHijackDNS = "hijack-dns"
-	RuleActionTypeSniff     = "sniff"
-	RuleActionTypeResolve   = "resolve"
+	RuleActionTypeRoute        = "route"
+	RuleActionTypeRouteOptions = "route-options"
+	RuleActionTypeDirect       = "direct"
+	RuleActionTypeReject       = "reject"
+	RuleActionTypeHijackDNS    = "hijack-dns"
+	RuleActionTypeReturn       = "return"
+	RuleActionTypeSniff        = "sniff"
+	RuleActionTypeResolve      = "resolve"
+	RuleActionTypePredefined   = "predefined"
 )
-
 const (
 	RuleActionRejectMethodDefault            = "default"
 	RuleActionRejectMethodReset              = "reset"

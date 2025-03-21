@@ -3,14 +3,17 @@ package adapter
 import (
 	"context"
 	"net/netip"
+	"time"
 
 	"github.com/sagernet/sing-box/common/process"
+	C "github.com/sagernet/sing-box/constant"
+	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	M "github.com/sagernet/sing/common/metadata"
 )
 
 type Inbound interface {
-	Service
+	Lifecycle
 	Type() string
 	Tag() string
 }
@@ -23,6 +26,19 @@ type TCPInjectableInbound interface {
 type UDPInjectableInbound interface {
 	Inbound
 	PacketConnectionHandlerEx
+}
+
+type InboundRegistry interface {
+	option.InboundOptionsRegistry
+	Create(ctx context.Context, router Router, logger log.ContextLogger, tag string, inboundType string, options any) (Inbound, error)
+}
+
+type InboundManager interface {
+	Lifecycle
+	Inbounds() []Inbound
+	Get(tag string) (Inbound, bool)
+	Remove(tag string) error
+	Create(ctx context.Context, router Router, logger log.ContextLogger, tag string, inboundType string, options any) error
 }
 
 type InboundContext struct {
@@ -44,13 +60,24 @@ type InboundContext struct {
 
 	// cache
 
-	InboundDetour     string
-	LastInbound       string
-	OriginDestination M.Socksaddr
-	// Deprecated
+	// Deprecated: implement in rule action
+	InboundDetour            string
+	LastInbound              string
+	OriginDestination        M.Socksaddr
+	RouteOriginalDestination M.Socksaddr
+	// Deprecated: to be removed
+	//nolint:staticcheck
 	InboundOptions            option.InboundOptions
 	UDPDisableDomainUnmapping bool
-	DNSServer                 string
+	UDPConnect                bool
+	UDPTimeout                time.Duration
+	TLSFragment               bool
+	TLSFragmentFallbackDelay  time.Duration
+
+	NetworkStrategy     *C.NetworkStrategy
+	NetworkType         []C.InterfaceType
+	FallbackNetworkType []C.InterfaceType
+	FallbackDelay       time.Duration
 
 	DestinationAddresses []netip.Addr
 	SourceGeoIPCode      string
@@ -73,11 +100,6 @@ type InboundContext struct {
 }
 
 func (c *InboundContext) ResetRuleCache() {
-	c.ResetRuleCacheContext()
-	c.DidMatch = false
-}
-
-func (c *InboundContext) ResetRuleCacheContext() {
 	c.IPCIDRMatchSource = false
 	c.IPCIDRAcceptEmpty = false
 	c.SourceAddressMatch = false
@@ -99,15 +121,6 @@ func ContextFrom(ctx context.Context) *InboundContext {
 		return nil
 	}
 	return metadata.(*InboundContext)
-}
-
-func AppendContext(ctx context.Context) (context.Context, *InboundContext) {
-	metadata := ContextFrom(ctx)
-	if metadata != nil {
-		return ctx, metadata
-	}
-	metadata = new(InboundContext)
-	return WithContext(ctx, metadata), metadata
 }
 
 func ExtendContext(ctx context.Context) (context.Context, *InboundContext) {

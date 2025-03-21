@@ -51,18 +51,6 @@ func (r *abstractDefaultRule) Close() error {
 	return nil
 }
 
-func (r *abstractDefaultRule) UpdateGeosite() error {
-	for _, item := range r.allItems {
-		if geositeItem, isSite := item.(*GeositeItem); isSite {
-			err := geositeItem.Update()
-			if err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
 func (r *abstractDefaultRule) Match(metadata *adapter.InboundContext) bool {
 	if len(r.allItems) == 0 {
 		return true
@@ -173,19 +161,6 @@ func (r *abstractLogicalRule) Type() string {
 	return C.RuleTypeLogical
 }
 
-func (r *abstractLogicalRule) UpdateGeosite() error {
-	for _, rule := range common.FilterIsInstance(r.rules, func(it adapter.HeadlessRule) (adapter.Rule, bool) {
-		rule, loaded := it.(adapter.Rule)
-		return rule, loaded
-	}) {
-		err := rule.UpdateGeosite()
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func (r *abstractLogicalRule) Start() error {
 	for _, rule := range common.FilterIsInstance(r.rules, func(it adapter.HeadlessRule) (interface {
 		Start() error
@@ -220,12 +195,12 @@ func (r *abstractLogicalRule) Close() error {
 func (r *abstractLogicalRule) Match(metadata *adapter.InboundContext) bool {
 	if r.mode == C.LogicalTypeAnd {
 		return common.All(r.rules, func(it adapter.HeadlessRule) bool {
-			metadata.ResetRuleCacheContext()
+			metadata.ResetRuleCache()
 			return it.Match(metadata)
 		}) != r.invert
 	} else {
 		return common.Any(r.rules, func(it adapter.HeadlessRule) bool {
-			metadata.ResetRuleCacheContext()
+			metadata.ResetRuleCache()
 			return it.Match(metadata)
 		}) != r.invert
 	}

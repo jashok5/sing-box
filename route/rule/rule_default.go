@@ -1,14 +1,19 @@
 package rule
 
 import (
+	"context"
+
 	"github.com/sagernet/sing-box/adapter"
 	C "github.com/sagernet/sing-box/constant"
+	"github.com/sagernet/sing-box/experimental/deprecated"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
+	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
+	"github.com/sagernet/sing/service"
 )
 
-func NewRule(router adapter.Router, logger log.ContextLogger, options option.Rule, checkOutbound bool) (adapter.Rule, error) {
+func NewRule(ctx context.Context, logger log.ContextLogger, options option.Rule, checkOutbound bool) (adapter.Rule, error) {
 	switch options.Type {
 	case "", C.RuleTypeDefault:
 		if !options.DefaultOptions.IsValid() {
@@ -20,7 +25,7 @@ func NewRule(router adapter.Router, logger log.ContextLogger, options option.Rul
 				return nil, E.New("missing outbound field")
 			}
 		}
-		return NewDefaultRule(router, logger, options.DefaultOptions)
+		return NewDefaultRule(ctx, logger, options.DefaultOptions)
 	case C.RuleTypeLogical:
 		if !options.LogicalOptions.IsValid() {
 			return nil, E.New("missing conditions")
@@ -31,7 +36,7 @@ func NewRule(router adapter.Router, logger log.ContextLogger, options option.Rul
 				return nil, E.New("missing outbound field")
 			}
 		}
-		return NewLogicalRule(router, logger, options.LogicalOptions)
+		return NewLogicalRule(ctx, logger, options.LogicalOptions)
 	default:
 		return nil, E.New("unknown rule type: ", options.Type)
 	}
@@ -48,8 +53,8 @@ type RuleItem interface {
 	String() string
 }
 
-func NewDefaultRule(router adapter.Router, logger log.ContextLogger, options option.DefaultRule) (*DefaultRule, error) {
-	action, err := NewRuleAction(options.RuleAction)
+func NewDefaultRule(ctx context.Context, logger log.ContextLogger, options option.DefaultRule) (*DefaultRule, error) {
+	action, err := NewRuleAction(ctx, logger, options.RuleAction)
 	if err != nil {
 		return nil, E.Cause(err, "action")
 	}
@@ -59,6 +64,8 @@ func NewDefaultRule(router adapter.Router, logger log.ContextLogger, options opt
 			action: action,
 		},
 	}
+	router := service.FromContext[adapter.Router](ctx)
+	networkManager := service.FromContext[adapter.NetworkManager](ctx)
 	if len(options.Inbound) > 0 {
 		item := NewInboundRule(options.Inbound)
 		rule.items = append(rule.items, item)
@@ -113,19 +120,13 @@ func NewDefaultRule(router adapter.Router, logger log.ContextLogger, options opt
 		rule.allItems = append(rule.allItems, item)
 	}
 	if len(options.Geosite) > 0 {
-		item := NewGeositeItem(router, logger, options.Geosite)
-		rule.destinationAddressItems = append(rule.destinationAddressItems, item)
-		rule.allItems = append(rule.allItems, item)
+		return nil, E.New("geosite database is deprecated in sing-box 1.8.0 and removed in sing-box 1.12.0")
 	}
 	if len(options.SourceGeoIP) > 0 {
-		item := NewGeoIPItem(router, logger, true, options.SourceGeoIP)
-		rule.sourceAddressItems = append(rule.sourceAddressItems, item)
-		rule.allItems = append(rule.allItems, item)
+		return nil, E.New("geoip database is deprecated in sing-box 1.8.0 and removed in sing-box 1.12.0")
 	}
 	if len(options.GeoIP) > 0 {
-		item := NewGeoIPItem(router, logger, false, options.GeoIP)
-		rule.destinationIPCIDRItems = append(rule.destinationIPCIDRItems, item)
-		rule.allItems = append(rule.allItems, item)
+		return nil, E.New("geoip database is deprecated in sing-box 1.8.0 and removed in sing-box 1.12.0")
 	}
 	if len(options.SourceIPCIDR) > 0 {
 		item, err := NewIPCIDRItem(true, options.SourceIPCIDR)
@@ -213,22 +214,46 @@ func NewDefaultRule(router adapter.Router, logger log.ContextLogger, options opt
 		rule.allItems = append(rule.allItems, item)
 	}
 	if options.ClashMode != "" {
-		item := NewClashModeItem(router, options.ClashMode)
+		item := NewClashModeItem(ctx, options.ClashMode)
+		rule.items = append(rule.items, item)
+		rule.allItems = append(rule.allItems, item)
+	}
+	if len(options.NetworkType) > 0 {
+		item := NewNetworkTypeItem(networkManager, common.Map(options.NetworkType, option.InterfaceType.Build))
+		rule.items = append(rule.items, item)
+		rule.allItems = append(rule.allItems, item)
+	}
+	if options.NetworkIsExpensive {
+		item := NewNetworkIsExpensiveItem(networkManager)
+		rule.items = append(rule.items, item)
+		rule.allItems = append(rule.allItems, item)
+	}
+	if options.NetworkIsConstrained {
+		item := NewNetworkIsConstrainedItem(networkManager)
 		rule.items = append(rule.items, item)
 		rule.allItems = append(rule.allItems, item)
 	}
 	if len(options.WIFISSID) > 0 {
-		item := NewWIFISSIDItem(router, options.WIFISSID)
+		item := NewWIFISSIDItem(networkManager, options.WIFISSID)
 		rule.items = append(rule.items, item)
 		rule.allItems = append(rule.allItems, item)
 	}
 	if len(options.WIFIBSSID) > 0 {
-		item := NewWIFIBSSIDItem(router, options.WIFIBSSID)
+		item := NewWIFIBSSIDItem(networkManager, options.WIFIBSSID)
 		rule.items = append(rule.items, item)
 		rule.allItems = append(rule.allItems, item)
 	}
 	if len(options.RuleSet) > 0 {
-		item := NewRuleSetItem(router, options.RuleSet, options.RuleSetIPCIDRMatchSource, false)
+		var matchSource bool
+		if options.RuleSetIPCIDRMatchSource {
+			matchSource = true
+		} else
+		//nolint:staticcheck
+		if options.Deprecated_RulesetIPCIDRMatchSource {
+			matchSource = true
+			deprecated.Report(ctx, deprecated.OptionBadMatchSource)
+		}
+		item := NewRuleSetItem(router, options.RuleSet, matchSource, false)
 		rule.items = append(rule.items, item)
 		rule.allItems = append(rule.allItems, item)
 	}
@@ -241,8 +266,8 @@ type LogicalRule struct {
 	abstractLogicalRule
 }
 
-func NewLogicalRule(router adapter.Router, logger log.ContextLogger, options option.LogicalRule) (*LogicalRule, error) {
-	action, err := NewRuleAction(options.RuleAction)
+func NewLogicalRule(ctx context.Context, logger log.ContextLogger, options option.LogicalRule) (*LogicalRule, error) {
+	action, err := NewRuleAction(ctx, logger, options.RuleAction)
 	if err != nil {
 		return nil, E.Cause(err, "action")
 	}
@@ -262,7 +287,7 @@ func NewLogicalRule(router adapter.Router, logger log.ContextLogger, options opt
 		return nil, E.New("unknown logical mode: ", options.Mode)
 	}
 	for i, subOptions := range options.Rules {
-		subRule, err := NewRule(router, logger, subOptions, false)
+		subRule, err := NewRule(ctx, logger, subOptions, false)
 		if err != nil {
 			return nil, E.Cause(err, "sub rule[", i, "]")
 		}
