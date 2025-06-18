@@ -13,6 +13,7 @@ import (
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing/common/buf"
+	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
@@ -46,6 +47,9 @@ func NewUDP(ctx context.Context, logger log.ContextLogger, tag string, options o
 	serverAddr := options.DNSServerAddressOptions.Build()
 	if serverAddr.Port == 0 {
 		serverAddr.Port = 53
+	}
+	if !serverAddr.IsValid() {
+		return nil, E.New("invalid server address: ", serverAddr)
 	}
 	return NewUDPRaw(logger, dns.NewTransportAdapterWithRemoteOptions(C.DNSTypeUDP, tag, options), transportDialer, serverAddr), nil
 }
@@ -117,7 +121,7 @@ func (t *UDPTransport) exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.M
 	conn.access.Unlock()
 	defer func() {
 		conn.access.Lock()
-		delete(conn.callbacks, messageId)
+		delete(conn.callbacks, exMessage.Id)
 		conn.access.Unlock()
 	}()
 	rawMessage, err := exMessage.PackBuffer(buffer.FreeBytes())
@@ -212,8 +216,8 @@ type dnsConnection struct {
 
 func (c *dnsConnection) Close(err error) {
 	c.closeOnce.Do(func() {
-		close(c.done)
 		c.err = err
+		close(c.done)
 	})
 	c.Conn.Close()
 }

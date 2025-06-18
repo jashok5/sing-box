@@ -2,8 +2,195 @@
 icon: material/alert-decagram
 ---
 
+#### 1.12.0-beta.26
+
+* Fixes and improvements
+
+#### 1.12.0-beta.24
+
+* Allow `tls_fragment` and `tls_record_fragment` to be enabled together **1**
+* Also add fragment options for TLS client configuration **2**
+* Fixes and improvements
+
+**1**:
+
+For debugging only, it is recommended to disable if record fragmentation works.
+
+See [Route Action](/configuration/route/rule_action/#tls_fragment).
+
+**2**:
+
+See [TLS](/configuration/shared/tls/).
+
+#### 1.12.0-beta.23
+
+* Add loopback address support for tun **1**
+* Add cache support for ssm-api **2**
+* Fixes and improvements
+
+**1**:
+
+TUN now implements SideStore's StosVPN.
+
+See [Tun](/configuration/inbound/tun/#loopback_address).
+
+**2**:
+
+See [SSM API Service](/configuration/service/ssm-api/#cache_path).
+
+#### 1.12.0-beta.21
+
+* Fix missing `home` option for DERP service **1**
+* Fixes and improvements
+
+**1**:
+
+You can now choose what the DERP home page shows, just like with derper's `-home` flag.
+
+See [DERP](/configuration/service/derp/#home).
+
+### 1.11.13
+
+* Fixes and improvements
+
+_We are temporarily unable to update sing-box apps on the App Store because the reviewer mistakenly found that we
+violated the rules (TestFlight users are not affected)._
+
+#### 1.12.0-beta.17
+
+* Update quic-go to v0.52.0
+* Fixes and improvements
+
+#### 1.12.0-beta.15
+
+* Add DERP service **1**
+* Add Resolved service and DNS server **2**
+* Add SSM API service **3**
+* Fixes and improvements
+
+**1**:
+
+DERP service is a Tailscale DERP server, similar to [derper](https://pkg.go.dev/tailscale.com/cmd/derper).
+
+See [DERP Service](/configuration/service/derp/).
+
+**2**:
+
+Resolved service is a fake systemd-resolved DBUS service to receive DNS settings from other programs
+(e.g. NetworkManager) and provide DNS resolution.
+
+See [Resolved Service](/configuration/service/resolved/) and [Resolved DNS Server](/configuration/dns/server/resolved/).
+
+**3**:
+
+SSM API service is a RESTful API server for managing Shadowsocks servers.
+
+See [SSM API Service](/configuration/service/ssm-api/).
+
+### 1.11.11
+
+* Fixes and improvements
+
+_We are temporarily unable to update sing-box apps on the App Store because the reviewer mistakenly found that we
+violated the rules (TestFlight users are not affected)._
+
+#### 1.12.0-beta.13
+
+* Add TLS record fragment route options **1**
+* Add missing `accept_routes` option for Tailscale **2**
+* Fixes and improvements
+
+**1**:
+
+See [Route Action](/configuration/route/rule_action/#tls_record_fragment).
+
+**2**:
+
+See [Tailscale](/configuration/endpoint/tailscale/#accept_routes).
+
+#### 1.12.0-beta.10
+
+* Add control options for listeners **1**
+* Fixes and improvements
+
+**1**:
+
+You can now set `bind_interface`, `routing_mark` and `reuse_addr` in Listen Fields.
+
+See [Listen Fields](/configuration/shared/listen/).
+
+### 1.11.10
+
+* Undeprecate the `block` outbound **1**
+* Fixes and improvements
+
+**1**:
+
+Since we don’t have a replacement for using the `block` outbound in selectors yet,
+we decided to temporarily undeprecate the `block` outbound until a replacement is available in the future.
+
+_We are temporarily unable to update sing-box apps on the App Store because the reviewer mistakenly found that we
+violated the rules (TestFlight users are not affected)._
+
+#### 1.12.0-beta.9
+
+* Update quic-go to v0.51.0
+* Fixes and improvements
+
+### 1.11.9
+
+* Fixes and improvements
+
+_We are temporarily unable to update sing-box apps on the App Store because the reviewer mistakenly found that we
+violated the rules (TestFlight users are not affected)._
+
+#### 1.12.0-beta.5
+
+* Fixes and improvements
+
+### 1.11.8
+
+* Improve `auto_redirect` **1**
+* Fixes and improvements
+
+**1**:
+
+Now `auto_redirect` fixes compatibility issues between TUN and Docker bridge networks,
+see [Tun](/configuration/inbound/tun/#auto_redirect).
+
+_We are temporarily unable to update sing-box apps on the App Store because the reviewer mistakenly found that we
+violated the rules (TestFlight users are not affected)._
+
+#### 1.12.0-beta.3
+
+* Fixes and improvements
+
+### 1.11.7
+
+* Fixes and improvements
+
+_We are temporarily unable to update sing-box apps on the App Store because the reviewer mistakenly found that we
+violated the rules (TestFlight users are not affected)._
+
 #### 1.12.0-beta.1
 
+* Fixes and improvements
+
+**1**:
+
+Now `auto_redirect` fixes compatibility issues between tun and Docker bridge networks,
+see [Tun](/configuration/inbound/tun/#auto_redirect).
+
+### 1.11.6
+
+* Fixes and improvements
+
+_We are temporarily unable to update sing-box apps on the App Store because the reviewer mistakenly found that we
+violated the rules (TestFlight users are not affected)._
+
+#### 1.12.0-alpha.19
+
+* Update gVisor to 20250319.0
 * Fixes and improvements
 
 #### 1.12.0-alpha.18
@@ -39,7 +226,8 @@ See [Dial Fields](/configuration/shared/dial/#domain_resolver).
 
 * Fixes and improvements
 
-_We are temporarily unable to update sing-box apps on the App Store because the reviewer mistakenly found that we violated the rules (TestFlight users are not affected)._
+_We are temporarily unable to update sing-box apps on the App Store because the reviewer mistakenly found that we
+violated the rules (TestFlight users are not affected)._
 
 #### 1.12.0-alpha.13
 
@@ -110,7 +298,8 @@ For Windows 7 users, legacy binaries now continue to compile with Go 1.23 and pa
 
 * Fixes and improvements
 
-_This version overwrites 1.11.2, as incorrect binaries were released due to a bug in the continuous integration process._
+_This version overwrites 1.11.2, as incorrect binaries were released due to a bug in the continuous integration
+process._
 
 #### 1.12.0-alpha.5
 

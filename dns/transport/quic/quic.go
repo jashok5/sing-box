@@ -16,6 +16,7 @@ import (
 	sQUIC "github.com/sagernet/sing-quic"
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/bufio"
+	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
@@ -57,6 +58,9 @@ func NewQUIC(ctx context.Context, logger log.ContextLogger, tag string, options 
 	serverAddr := options.DNSServerAddressOptions.Build()
 	if serverAddr.Port == 0 {
 		serverAddr.Port = 853
+	}
+	if !serverAddr.IsValid() {
+		return nil, E.New("invalid server address: ", serverAddr)
 	}
 	return &Transport{
 		TransportAdapter: dns.NewTransportAdapterWithRemoteOptions(C.DNSTypeQUIC, tag, options.RemoteDNSServerOptions),
@@ -140,12 +144,12 @@ func (t *Transport) exchange(ctx context.Context, message *mDNS.Msg, conn quic.C
 	if err != nil {
 		return nil, err
 	}
-	defer stream.Close()
-	defer stream.CancelRead(0)
 	err = transport.WriteMessage(stream, 0, message)
 	if err != nil {
+		stream.Close()
 		return nil, err
 	}
+	stream.Close()
 	return transport.ReadMessage(stream)
 }
 

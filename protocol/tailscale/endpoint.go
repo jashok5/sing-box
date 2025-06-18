@@ -2,8 +2,10 @@ package tailscale
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
+	"net/http"
 	"net/netip"
 	"net/url"
 	"os"
@@ -70,6 +72,7 @@ type Endpoint struct {
 	filter            *atomic.Pointer[filter.Filter]
 	onReconfig        wgengine.ReconfigListener
 
+	acceptRoutes           bool
 	exitNode               string
 	exitNodeAllowLANAccess bool
 	advertiseRoutes        []netip.Prefix
@@ -147,6 +150,17 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 			return dnsRouter.Lookup(ctx, host, outboundDialer.(dialer.ResolveDialer).QueryOptions())
 		},
 		DNS: &dnsConfigurtor{},
+		HTTPClient: &http.Client{
+			Transport: &http.Transport{
+				ForceAttemptHTTP2: true,
+				DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+					return outboundDialer.DialContext(ctx, network, M.ParseSocksaddr(address))
+				},
+				TLSClientConfig: &tls.Config{
+					RootCAs: adapter.RootPoolFromContext(ctx),
+				},
+			},
+		},
 	}
 	return &Endpoint{
 		Adapter:                endpoint.NewAdapter(C.TypeTailscale, tag, []string{N.NetworkTCP, N.NetworkUDP}, nil),
@@ -157,6 +171,7 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 		network:                service.FromContext[adapter.NetworkManager](ctx),
 		platformInterface:      service.FromContext[platform.Interface](ctx),
 		server:                 server,
+		acceptRoutes:           options.AcceptRoutes,
 		exitNode:               options.ExitNode,
 		exitNodeAllowLANAccess: options.ExitNodeAllowLANAccess,
 		advertiseRoutes:        options.AdvertiseRoutes,
@@ -206,6 +221,14 @@ func (t *Endpoint) Start(stage adapter.StartStage) error {
 	}
 
 	ipStack := t.server.ExportNetstack().ExportIPStack()
+	gErr := ipStack.SetSpoofing(tun.DefaultNIC, true)
+	if gErr != nil {
+		return gonet.TranslateNetstackError(gErr)
+	}
+	gErr = ipStack.SetPromiscuousMode(tun.DefaultNIC, true)
+	if gErr != nil {
+		return gonet.TranslateNetstackError(gErr)
+	}
 	ipStack.SetTransportProtocolHandler(tcp.ProtocolNumber, tun.NewTCPForwarder(t.ctx, ipStack, t).HandlePacket)
 	udpForwarder := tun.NewUDPForwarder(t.ctx, ipStack, t, t.udpTimeout)
 	ipStack.SetTransportProtocolHandler(udp.ProtocolNumber, udpForwarder.HandlePacket)
@@ -213,6 +236,10 @@ func (t *Endpoint) Start(stage adapter.StartStage) error {
 
 	localBackend := t.server.ExportLocalBackend()
 	perfs := &ipn.MaskedPrefs{
+		Prefs: ipn.Prefs{
+			RouteAll: t.acceptRoutes,
+		},
+		RouteAllSet:        true,
 		ExitNodeIPSet:      true,
 		AdvertiseRoutesSet: true,
 	}
@@ -444,6 +471,10 @@ func (t *Endpoint) NewPacketConnectionEx(ctx context.Context, conn N.PacketConn,
 	t.logger.InfoContext(ctx, "inbound packet connection from ", source)
 	t.logger.InfoContext(ctx, "inbound packet connection to ", destination)
 	t.router.RoutePacketConnectionEx(ctx, conn, metadata, onClose)
+}
+
+func (t *Endpoint) Server() *tsnet.Server {
+	return t.server
 }
 
 func addressFromAddr(destination netip.Addr) tcpip.Address {

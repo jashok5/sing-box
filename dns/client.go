@@ -34,6 +34,7 @@ type Client struct {
 	disableCache     bool
 	disableExpire    bool
 	independentCache bool
+	clientSubnet     netip.Prefix
 	rdrc             adapter.RDRCStore
 	initRDRCFunc     func() adapter.RDRCStore
 	logger           logger.ContextLogger
@@ -47,6 +48,7 @@ type ClientOptions struct {
 	DisableExpire    bool
 	IndependentCache bool
 	CacheCapacity    uint32
+	ClientSubnet     netip.Prefix
 	RDRC             func() adapter.RDRCStore
 	Logger           logger.ContextLogger
 }
@@ -57,6 +59,7 @@ func NewClient(options ClientOptions) *Client {
 		disableCache:     options.DisableCache,
 		disableExpire:    options.DisableExpire,
 		independentCache: options.IndependentCache,
+		clientSubnet:     options.ClientSubnet,
 		initRDRCFunc:     options.RDRC,
 		logger:           options.Logger,
 	}
@@ -104,8 +107,12 @@ func (c *Client) Exchange(ctx context.Context, transport adapter.DNSTransport, m
 		return &responseMessage, nil
 	}
 	question := message.Question[0]
-	if options.ClientSubnet.IsValid() {
-		message = SetClientSubnet(message, options.ClientSubnet, true)
+	clientSubnet := options.ClientSubnet
+	if !clientSubnet.IsValid() {
+		clientSubnet = c.clientSubnet
+	}
+	if clientSubnet.IsValid() {
+		message = SetClientSubnet(message, clientSubnet)
 	}
 	isSimpleRequest := len(message.Question) == 1 &&
 		len(message.Ns) == 0 &&
@@ -232,9 +239,19 @@ func (c *Client) Exchange(ctx context.Context, transport adapter.DNSTransport, m
 			record.Header().Ttl = timeToLive
 		}
 	}
-	response.Id = messageId
 	if !disableCache {
 		c.storeCache(transport, question, response, timeToLive)
+	}
+	response.Id = messageId
+	requestEDNSOpt := message.IsEdns0()
+	responseEDNSOpt := response.IsEdns0()
+	if responseEDNSOpt != nil && (requestEDNSOpt == nil || requestEDNSOpt.Version() < responseEDNSOpt.Version()) {
+		response.Extra = common.Filter(response.Extra, func(it dns.RR) bool {
+			return it.Header().Rrtype != dns.TypeOPT
+		})
+		if requestEDNSOpt != nil {
+			response.SetEdns0(responseEDNSOpt.UDPSize(), responseEDNSOpt.Do())
+		}
 	}
 	logExchangedResponse(c.logger, ctx, response, timeToLive)
 	return response, err
@@ -243,9 +260,15 @@ func (c *Client) Exchange(ctx context.Context, transport adapter.DNSTransport, m
 func (c *Client) Lookup(ctx context.Context, transport adapter.DNSTransport, domain string, options adapter.DNSQueryOptions, responseChecker func(responseAddrs []netip.Addr) bool) ([]netip.Addr, error) {
 	domain = FqdnToDomain(domain)
 	dnsName := dns.Fqdn(domain)
-	if options.Strategy == C.DomainStrategyIPv4Only {
+	var strategy C.DomainStrategy
+	if options.LookupStrategy != C.DomainStrategyAsIS {
+		strategy = options.LookupStrategy
+	} else {
+		strategy = options.Strategy
+	}
+	if strategy == C.DomainStrategyIPv4Only {
 		return c.lookupToExchange(ctx, transport, dnsName, dns.TypeA, options, responseChecker)
-	} else if options.Strategy == C.DomainStrategyIPv6Only {
+	} else if strategy == C.DomainStrategyIPv6Only {
 		return c.lookupToExchange(ctx, transport, dnsName, dns.TypeAAAA, options, responseChecker)
 	}
 	var response4 []netip.Addr
@@ -271,7 +294,7 @@ func (c *Client) Lookup(ctx context.Context, transport adapter.DNSTransport, dom
 	if len(response4) == 0 && len(response6) == 0 {
 		return nil, err
 	}
-	return sortAddresses(response4, response6, options.Strategy), nil
+	return sortAddresses(response4, response6, strategy), nil
 }
 
 func (c *Client) ClearCache() {
@@ -483,7 +506,7 @@ func (c *Client) loadResponse(question dns.Question, transport adapter.DNSTransp
 }
 
 func MessageToAddresses(response *dns.Msg) ([]netip.Addr, error) {
-	if response.Rcode != dns.RcodeSuccess && response.Rcode != dns.RcodeNameError {
+	if response.Rcode != dns.RcodeSuccess {
 		return nil, RcodeError(response.Rcode)
 	}
 	addresses := make([]netip.Addr, 0, len(response.Answer))
@@ -527,12 +550,26 @@ func transportTagFromContext(ctx context.Context) (string, bool) {
 	return value, loaded
 }
 
+func FixedResponseStatus(message *dns.Msg, rcode int) *dns.Msg {
+	return &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:       message.Id,
+			Rcode:    rcode,
+			Response: true,
+		},
+		Question: message.Question,
+	}
+}
+
 func FixedResponse(id uint16, question dns.Question, addresses []netip.Addr, timeToLive uint32) *dns.Msg {
 	response := dns.Msg{
 		MsgHdr: dns.MsgHdr{
-			Id:       id,
-			Rcode:    dns.RcodeSuccess,
-			Response: true,
+			Id:                 id,
+			Response:           true,
+			Authoritative:      true,
+			RecursionDesired:   true,
+			RecursionAvailable: true,
+			Rcode:              dns.RcodeSuccess,
 		},
 		Question: []dns.Question{question},
 	}
@@ -565,9 +602,12 @@ func FixedResponse(id uint16, question dns.Question, addresses []netip.Addr, tim
 func FixedResponseCNAME(id uint16, question dns.Question, record string, timeToLive uint32) *dns.Msg {
 	response := dns.Msg{
 		MsgHdr: dns.MsgHdr{
-			Id:       id,
-			Rcode:    dns.RcodeSuccess,
-			Response: true,
+			Id:                 id,
+			Response:           true,
+			Authoritative:      true,
+			RecursionDesired:   true,
+			RecursionAvailable: true,
+			Rcode:              dns.RcodeSuccess,
 		},
 		Question: []dns.Question{question},
 		Answer: []dns.RR{
@@ -588,9 +628,12 @@ func FixedResponseCNAME(id uint16, question dns.Question, record string, timeToL
 func FixedResponseTXT(id uint16, question dns.Question, records []string, timeToLive uint32) *dns.Msg {
 	response := dns.Msg{
 		MsgHdr: dns.MsgHdr{
-			Id:       id,
-			Rcode:    dns.RcodeSuccess,
-			Response: true,
+			Id:                 id,
+			Response:           true,
+			Authoritative:      true,
+			RecursionDesired:   true,
+			RecursionAvailable: true,
+			Rcode:              dns.RcodeSuccess,
 		},
 		Question: []dns.Question{question},
 		Answer: []dns.RR{
@@ -611,9 +654,12 @@ func FixedResponseTXT(id uint16, question dns.Question, records []string, timeTo
 func FixedResponseMX(id uint16, question dns.Question, records []*net.MX, timeToLive uint32) *dns.Msg {
 	response := dns.Msg{
 		MsgHdr: dns.MsgHdr{
-			Id:       id,
-			Rcode:    dns.RcodeSuccess,
-			Response: true,
+			Id:                 id,
+			Response:           true,
+			Authoritative:      true,
+			RecursionDesired:   true,
+			RecursionAvailable: true,
+			Rcode:              dns.RcodeSuccess,
 		},
 		Question: []dns.Question{question},
 	}
