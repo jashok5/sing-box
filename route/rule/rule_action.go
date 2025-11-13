@@ -2,10 +2,10 @@ package rule
 
 import (
 	"context"
+	"errors"
 	"net/netip"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -86,7 +86,7 @@ func NewRuleAction(ctx context.Context, logger logger.ContextLogger, action opti
 		return &RuleActionHijackDNS{}, nil
 	case C.RuleActionTypeSniff:
 		sniffAction := &RuleActionSniff{
-			snifferNames: action.SniffOptions.Sniffer,
+			SnifferNames: action.SniffOptions.Sniffer,
 			Timeout:      time.Duration(action.SniffOptions.Timeout),
 		}
 		return sniffAction, sniffAction.build()
@@ -284,6 +284,23 @@ func (r *RuleActionDirect) String() string {
 	return "direct" + r.description
 }
 
+type RejectedError struct {
+	Cause error
+}
+
+func (r *RejectedError) Error() string {
+	return "rejected"
+}
+
+func (r *RejectedError) Unwrap() error {
+	return r.Cause
+}
+
+func IsRejected(err error) bool {
+	var rejected *RejectedError
+	return errors.As(err, &rejected)
+}
+
 type RuleActionReject struct {
 	Method      string
 	NoDrop      bool
@@ -307,9 +324,11 @@ func (r *RuleActionReject) Error(ctx context.Context) error {
 	var returnErr error
 	switch r.Method {
 	case C.RuleActionRejectMethodDefault:
-		returnErr = syscall.ECONNREFUSED
+		returnErr = &RejectedError{tun.ErrReset}
 	case C.RuleActionRejectMethodDrop:
-		return tun.ErrDrop
+		return &RejectedError{tun.ErrDrop}
+	case C.RuleActionRejectMethodReply:
+		return nil
 	default:
 		panic(F.ToString("unknown reject method: ", r.Method))
 	}
@@ -327,7 +346,7 @@ func (r *RuleActionReject) Error(ctx context.Context) error {
 		if ctx != nil {
 			r.logger.DebugContext(ctx, "dropped due to flooding")
 		}
-		return tun.ErrDrop
+		return &RejectedError{tun.ErrDrop}
 	}
 	return returnErr
 }
@@ -343,7 +362,7 @@ func (r *RuleActionHijackDNS) String() string {
 }
 
 type RuleActionSniff struct {
-	snifferNames   []string
+	SnifferNames   []string
 	StreamSniffers []sniff.StreamSniffer
 	PacketSniffers []sniff.PacketSniffer
 	Timeout        time.Duration
@@ -356,7 +375,7 @@ func (r *RuleActionSniff) Type() string {
 }
 
 func (r *RuleActionSniff) build() error {
-	for _, name := range r.snifferNames {
+	for _, name := range r.SnifferNames {
 		switch name {
 		case C.ProtocolTLS:
 			r.StreamSniffers = append(r.StreamSniffers, sniff.TLSClientHello)
@@ -389,14 +408,14 @@ func (r *RuleActionSniff) build() error {
 }
 
 func (r *RuleActionSniff) String() string {
-	if len(r.snifferNames) == 0 && r.Timeout == 0 {
+	if len(r.SnifferNames) == 0 && r.Timeout == 0 {
 		return "sniff"
-	} else if len(r.snifferNames) > 0 && r.Timeout == 0 {
-		return F.ToString("sniff(", strings.Join(r.snifferNames, ","), ")")
-	} else if len(r.snifferNames) == 0 && r.Timeout > 0 {
+	} else if len(r.SnifferNames) > 0 && r.Timeout == 0 {
+		return F.ToString("sniff(", strings.Join(r.SnifferNames, ","), ")")
+	} else if len(r.SnifferNames) == 0 && r.Timeout > 0 {
 		return F.ToString("sniff(", r.Timeout.String(), ")")
 	} else {
-		return F.ToString("sniff(", strings.Join(r.snifferNames, ","), ",", r.Timeout.String(), ")")
+		return F.ToString("sniff(", strings.Join(r.SnifferNames, ","), ",", r.Timeout.String(), ")")
 	}
 }
 

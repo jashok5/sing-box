@@ -2,6 +2,10 @@
 icon: material/new-box
 ---
 
+!!! quote "sing-box 1.13.0 中的更改"
+
+    :material-plus: [exclude_mptcp](#exclude_mptcp)
+
 !!! quote "sing-box 1.12.0 中的更改"
 
     :material-plus: [loopback_address](#loopback_address)
@@ -63,8 +67,9 @@ icon: material/new-box
   "auto_redirect": true,
   "auto_redirect_input_mark": "0x2023",
   "auto_redirect_output_mark": "0x2024",
+  "exclude_mptcp": false,
   "loopback_address": [
-    "10.0.7.1"
+    "10.7.0.1"
   ],
   "strict_route": true,
   "route_address": [
@@ -277,13 +282,27 @@ tun 接口的 IPv6 前缀。
 
 默认使用 `0x2024`。
 
+#### exclude_mptcp
+
+!!! question "自 sing-box 1.13.0 起"
+
+!!! quote ""
+
+    仅支持 Linux，且需要 nftables，`auto_route` 和 `auto_redirect` 已启用。 
+
+由于协议限制，MPTCP 无法被透明代理。
+
+此类流量通常由 Apple 系统创建。
+
+启用时，MPTCP 连接将绕过 sing-box 直接连接，否则，将被拒绝以避免错误。
+
 #### loopback_address
 
 !!! question "自 sing-box 1.12.0 起"
 
 环回地址是用于使指向指定地址的 TCP 连接连接到来源地址的。
 
-将选项值设置为 `10.0.7.1` 可实现与 SideStore/StosVPN 相同的行为。
+将选项值设置为 `10.7.0.1` 可实现与 SideStore/StosVPN 相同的行为。
 
 当启用 `auto_redirect` 时，可以作为网关为局域网设备（而不仅仅是本地）实现相同的行为。
 

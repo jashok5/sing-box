@@ -19,7 +19,6 @@ import (
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing-tun"
 	"github.com/sagernet/sing/common"
-	"github.com/sagernet/sing/common/atomic"
 	"github.com/sagernet/sing/common/control"
 	E "github.com/sagernet/sing/common/exceptions"
 	F "github.com/sagernet/sing/common/format"
@@ -37,7 +36,7 @@ var _ adapter.NetworkManager = (*NetworkManager)(nil)
 type NetworkManager struct {
 	logger            logger.ContextLogger
 	interfaceFinder   *control.DefaultInterfaceFinder
-	networkInterfaces atomic.TypedValue[[]adapter.NetworkInterface]
+	networkInterfaces common.TypedValue[[]adapter.NetworkInterface]
 
 	autoDetectInterface    bool
 	defaultOptions         adapter.NetworkOptions
@@ -364,6 +363,15 @@ func (r *NetworkManager) RegisterAutoRedirectOutputMark(mark uint32) error {
 
 func (r *NetworkManager) AutoRedirectOutputMark() uint32 {
 	return r.autoRedirectOutputMark
+}
+
+func (r *NetworkManager) AutoRedirectOutputMarkFunc() control.Func {
+	return func(network, address string, conn syscall.RawConn) error {
+		if r.autoRedirectOutputMark == 0 {
+			return nil
+		}
+		return control.RoutingMark(r.autoRedirectOutputMark)(network, address, conn)
+	}
 }
 
 func (r *NetworkManager) NetworkMonitor() tun.NetworkUpdateMonitor {

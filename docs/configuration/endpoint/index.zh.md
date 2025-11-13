@@ -1,7 +1,3 @@
----
-icon: material/new-box
----
-
 !!! question "自 sing-box 1.11.0 起"
 
 # 端点
@@ -25,7 +21,7 @@ icon: material/new-box
 
 | 类型          | 格式                        |
 |-------------|---------------------------|
-| `wireguard` | [WireGuard](./wiregaurd/) |
+| `wireguard` | [WireGuard](./wireguard/) |
 | `tailscale` | [Tailscale](./tailscale/) |
 
 #### tag

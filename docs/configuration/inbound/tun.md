@@ -2,6 +2,10 @@
 icon: material/new-box
 ---
 
+!!! quote "Changes in sing-box 1.13.0"
+
+    :material-plus: [exclude_mptcp](#exclude_mptcp)
+
 !!! quote "Changes in sing-box 1.12.0"
 
     :material-plus: [loopback_address](#loopback_address)
@@ -63,8 +67,9 @@ icon: material/new-box
   "auto_redirect": true,
   "auto_redirect_input_mark": "0x2023",
   "auto_redirect_output_mark": "0x2024",
+  "exclude_mptcp": false,
   "loopback_address": [
-    "10.0.7.1"
+    "10.7.0.1"
   ],
   "strict_route": true,
   "route_address": [
@@ -278,13 +283,27 @@ Connection output mark used by `auto_redirect`.
 
 `0x2024` is used by default.
 
+#### exclude_mptcp
+
+!!! question "Since sing-box 1.13.0"
+
+!!! quote ""
+
+    Only supported on Linux with nftables and requires `auto_route` and `auto_redirect` enabled.
+
+MPTCP cannot be transparently proxied due to protocol limitations.
+
+Such traffic is usually created by Apple systems.
+
+When enabled, MPTCP connections will bypass sing-box and connect directly, otherwise, will be rejected to avoid errors by default.
+
 #### loopback_address
 
 !!! question "Since sing-box 1.12.0"
 
 Loopback addresses make TCP connections to the specified address connect to the source address.
 
-Setting option value to `10.0.7.1` achieves the same behavior as SideStore/StosVPN.
+Setting option value to `10.7.0.1` achieves the same behavior as SideStore/StosVPN.
 
 When `auto_redirect` is enabled, the same behavior can be achieved for LAN devices (not just local) as a gateway.
 
