@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	_ "github.com/sagernet/gomobile"
@@ -46,7 +47,7 @@ var (
 	sharedFlags []string
 	debugFlags  []string
 	sharedTags  []string
-	macOSTags   []string
+	darwinTags  []string
 	memcTags    []string
 	notMemcTags []string
 	debugTags   []string
@@ -59,19 +60,37 @@ func init() {
 	if err != nil {
 		currentTag = "unknown"
 	}
-	sharedFlags = append(sharedFlags, "-ldflags", "-X github.com/sagernet/sing-box/constant.Version="+currentTag+" -s -w -buildid=  -checklinkname=0")
-	debugFlags = append(debugFlags, "-ldflags", "-X github.com/sagernet/sing-box/constant.Version="+currentTag+" -checklinkname=0")
+	sharedFlags = append(sharedFlags, "-ldflags", "-X github.com/sagernet/sing-box/constant.Version="+currentTag+" -X internal/godebug.defaultGODEBUG=multipathtcp=0 -s -w -buildid=  -checklinkname=0")
+	debugFlags = append(debugFlags, "-ldflags", "-X github.com/sagernet/sing-box/constant.Version="+currentTag+" -X internal/godebug.defaultGODEBUG=multipathtcp=0 -checklinkname=0")
 
-	sharedTags = append(sharedTags, "with_gvisor", "with_quic", "with_wireguard", "with_utls", "with_clash_api", "with_conntrack", "badlinkname", "tfogo_checklinkname0", "with_shadowsocksr")
-	macOSTags = append(macOSTags, "with_dhcp")
+	sharedTags = append(sharedTags, "with_gvisor", "with_quic", "with_wireguard", "with_utls", "with_naive_outbound", "with_clash_api", "with_conntrack", "badlinkname", "tfogo_checklinkname0", "with_shadowsocksr")
+	darwinTags = append(darwinTags, "with_dhcp")
 	memcTags = append(memcTags, "with_tailscale")
 	notMemcTags = append(notMemcTags, "with_low_memory")
 	debugTags = append(debugTags, "debug")
 }
 
-func buildAndroid() {
-	build_shared.FindSDK()
+type AndroidBuildConfig struct {
+	AndroidAPI int
+	OutputName string
+	Tags       []string
+}
 
+func filterTags(tags []string, exclude ...string) []string {
+	excludeMap := make(map[string]bool)
+	for _, tag := range exclude {
+		excludeMap[tag] = true
+	}
+	var result []string
+	for _, tag := range tags {
+		if !excludeMap[tag] {
+			result = append(result, tag)
+		}
+	}
+	return result
+}
+
+func checkJavaVersion() {
 	var javaPath string
 	javaHome := os.Getenv("JAVA_HOME")
 	if javaHome == "" {
@@ -87,21 +106,24 @@ func buildAndroid() {
 	if !strings.Contains(javaVersion, "openjdk 17") {
 		log.Fatal("java version should be openjdk 17")
 	}
+}
 
-	var bindTarget string
+func getAndroidBindTarget() string {
 	if platform != "" {
-		bindTarget = platform
+		return platform
 	} else if debugEnabled {
-		bindTarget = "android/arm64"
-	} else {
-		bindTarget = "android"
+		return "android/arm64"
 	}
+	return "android"
+}
 
+func buildAndroidVariant(config AndroidBuildConfig, bindTarget string) {
 	args := []string{
 		"bind",
 		"-v",
+		"-o", config.OutputName,
 		"-target", bindTarget,
-		"-androidapi", "21",
+		"-androidapi", strconv.Itoa(config.AndroidAPI),
 		"-javapkg=io.nekohasekai",
 		"-libname=box",
 	}
@@ -112,32 +134,57 @@ func buildAndroid() {
 		args = append(args, debugFlags...)
 	}
 
-	tags := append(sharedTags, memcTags...)
-	if debugEnabled {
-		tags = append(tags, debugTags...)
-	}
-
-	args = append(args, "-tags", strings.Join(tags, ","))
+	args = append(args, "-tags", strings.Join(config.Tags, ","))
 	args = append(args, "./experimental/libbox")
 
 	command := exec.Command(build_shared.GoBinPath+"/gomobile", args...)
 	command.Stdout = os.Stdout
 	command.Stderr = os.Stderr
-	err = command.Run()
+	err := command.Run()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	const name = "libbox.aar"
 	copyPath := filepath.Join("..", "sing-box-for-android", "app", "libs")
 	if rw.IsDir(copyPath) {
 		copyPath, _ = filepath.Abs(copyPath)
-		err = rw.CopyFile(name, filepath.Join(copyPath, name))
+		err = rw.CopyFile(config.OutputName, filepath.Join(copyPath, config.OutputName))
 		if err != nil {
 			log.Fatal(err)
 		}
-		log.Info("copied to ", copyPath)
+		log.Info("copied ", config.OutputName, " to ", copyPath)
 	}
+}
+
+func buildAndroid() {
+	build_shared.FindSDK()
+	checkJavaVersion()
+
+	bindTarget := getAndroidBindTarget()
+
+	// Build main variant (SDK 23)
+	mainTags := append([]string{}, sharedTags...)
+	mainTags = append(mainTags, memcTags...)
+	if debugEnabled {
+		mainTags = append(mainTags, debugTags...)
+	}
+	buildAndroidVariant(AndroidBuildConfig{
+		AndroidAPI: 23,
+		OutputName: "libbox.aar",
+		Tags:       mainTags,
+	}, bindTarget)
+
+	// Build legacy variant (SDK 21, no naive outbound)
+	legacyTags := filterTags(sharedTags, "with_naive_outbound")
+	legacyTags = append(legacyTags, memcTags...)
+	if debugEnabled {
+		legacyTags = append(legacyTags, debugTags...)
+	}
+	buildAndroidVariant(AndroidBuildConfig{
+		AndroidAPI: 21,
+		OutputName: "libbox-legacy.aar",
+		Tags:       legacyTags,
+	}, bindTarget)
 }
 
 func buildApple() {
@@ -147,7 +194,7 @@ func buildApple() {
 	} else if debugEnabled {
 		bindTarget = "ios"
 	} else {
-		bindTarget = "ios,tvos,macos"
+		bindTarget = "ios,iossimulator,tvos,tvossimulator,macos"
 	}
 
 	args := []string{
@@ -158,9 +205,7 @@ func buildApple() {
 		"-tags-not-macos=with_low_memory",
 	}
 	if !withTailscale {
-		args = append(args, "-tags-macos="+strings.Join(append(macOSTags, memcTags...), ","))
-	} else {
-		args = append(args, "-tags-macos="+strings.Join(macOSTags, ","))
+		args = append(args, "-tags-macos="+strings.Join(memcTags, ","))
 	}
 
 	if !debugEnabled {
@@ -169,7 +214,7 @@ func buildApple() {
 		args = append(args, debugFlags...)
 	}
 
-	tags := sharedTags
+	tags := append(sharedTags, darwinTags...)
 	if withTailscale {
 		tags = append(tags, memcTags...)
 	}
