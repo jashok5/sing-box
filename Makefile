@@ -1,6 +1,6 @@
 NAME = sing-box
 COMMIT = $(shell git rev-parse --short HEAD)
-TAGS ?= with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_tailscale,with_ccm,badlinkname,tfogo_checklinkname0,with_shadowsocksr
+TAGS ?= with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_tailscale,with_ccm,with_ocm,badlinkname,tfogo_checklinkname0,with_shadowsocksr
 
 GOHOSTOS = $(shell go env GOHOSTOS)
 GOHOSTARCH = $(shell go env GOHOSTARCH)
@@ -89,12 +89,12 @@ update_android_version:
 	go run ./cmd/internal/update_android_version
 
 build_android:
-	cd ../sing-box-for-android && ./gradlew :app:clean :app:assemblePlayRelease :app:assembleOtherRelease && ./gradlew --stop
+	cd ../sing-box-for-android && ./gradlew :app:clean :app:assembleOtherRelease :app:assembleOtherLegacyRelease && ./gradlew --stop
 
 upload_android:
 	mkdir -p dist/release_android
-	cp ../sing-box-for-android/app/build/outputs/apk/play/release/*.apk dist/release_android
-	cp ../sing-box-for-android/app/build/outputs/apk/other/release/*-universal.apk dist/release_android
+	cp ../sing-box-for-android/app/build/outputs/apk/other/release/*.apk dist/release_android
+	cp ../sing-box-for-android/app/build/outputs/apk/otherLegacy/release/*.apk dist/release_android
 	ghr --replace --draft --prerelease -p 5 "v${VERSION}" dist/release_android
 	rm -rf dist/release_android
 
@@ -211,7 +211,7 @@ release_apple: lib_ios update_apple_version release_ios release_macos release_tv
 release_apple_beta: update_apple_version release_ios release_macos release_tvos
 
 publish_testflight:
-	go run -v ./cmd/internal/app_store_connect publish_testflight
+	go run -v ./cmd/internal/app_store_connect publish_testflight $(filter-out $@,$(MAKECMDGOALS))
 
 prepare_app_store:
 	go run -v ./cmd/internal/app_store_connect prepare_app_store
