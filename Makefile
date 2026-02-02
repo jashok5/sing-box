@@ -305,17 +305,17 @@ build_darwin_amd64:
 build_darwin_arm64:
 	GOOS=darwin GOARCH=arm64 go build $(MAIN_PARAMS) -o sing-box_darwin_arm64 $(MAIN)
 
-CC_LINUX_AMD64 ?= zig cc -target x86_64-linux-musl
-CXX_LINUX_AMD64 ?= zig c++ -target x86_64-linux-musl
+CC_LINUX_AMD64 ?= zig cc -target x86_64-linux-gnu.2.18 -O3 -s
+CXX_LINUX_AMD64 ?= zig c++ -target x86_64-linux-gnu.2.18 -O3 -s
 
-CC_LINUX_ARM64 ?= zig cc -target aarch64-linux-musl
-CXX_LINUX_ARM64 ?= zig c++ -target aarch64-linux-musl
+CC_LINUX_ARM64 ?= zig cc -target aarch64-linux-gnu.2.18 -O3 -s
+CXX_LINUX_ARM64 ?= zig c++ -target aarch64-linux-gnu.2.18 -O3 -s
 
-CC_WINDOWS_AMD64 ?= zig cc -target x86_64-windows-gnu
-CXX_WINDOWS_AMD64 ?= zig c++ -target x86_64-windows-gnu
+CC_WINDOWS_AMD64 ?= zig cc -target x86_64-windows-gnu -O3 -s
+CXX_WINDOWS_AMD64 ?= zig c++ -target x86_64-windows-gnu -O3 -s
 
-CC_WINDOWS_ARM64 ?= zig cc -target aarch64-windows-gnu
-CXX_WINDOWS_ARM64 ?= zig c++ -target aarch64-windows-gnu
+CC_WINDOWS_ARM64 ?= zig cc -target aarch64-windows-gnu -O3 -s
+CXX_WINDOWS_ARM64 ?= zig c++ -target aarch64-windows-gnu -O3 -s
 
 build_lib_cshared:
 	$(MAKE) build_lib_linux
