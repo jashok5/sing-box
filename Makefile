@@ -11,11 +11,26 @@ MAIN_PARAMS = $(PARAMS) -tags "$(TAGS)"
 MAIN = ./cmd/sing-box
 PREFIX ?= $(shell go env GOPATH)
 
-.PHONY: test release docs build
+LIB_MAIN = ./cmd/libbox_cshared
+LIB_NAME = sing-box-lib
+
+.PHONY: test release docs build lib_darwin lib_linux lib_windows
 
 build:
 	export GOTOOLCHAIN=local && \
 	go build $(MAIN_PARAMS) $(MAIN)
+
+lib_darwin:
+	export GOTOOLCHAIN=local && \
+	go build -buildmode=c-shared -o $(LIB_NAME)-macos-$(GOHOSTARCH).dylib $(MAIN_PARAMS) $(LIB_MAIN)
+
+lib_linux:
+	export GOTOOLCHAIN=local && \
+	go build -buildmode=c-shared -o $(LIB_NAME)-linux-$(GOHOSTARCH).so $(MAIN_PARAMS) $(LIB_MAIN)
+
+lib_windows:
+	export GOTOOLCHAIN=local && \
+	go build -buildmode=c-shared -o $(LIB_NAME)-windows-$(GOHOSTARCH).dll $(MAIN_PARAMS) $(LIB_MAIN)
 
 race:
 	export GOTOOLCHAIN=local && \
@@ -289,3 +304,32 @@ build_darwin_amd64:
 
 build_darwin_arm64:
 	GOOS=darwin GOARCH=arm64 go build $(MAIN_PARAMS) -o sing-box_darwin_arm64 $(MAIN)
+
+CC_LINUX_AMD64 ?= zig cc -target x86_64-linux-musl
+CXX_LINUX_AMD64 ?= zig c++ -target x86_64-linux-musl
+
+CC_LINUX_ARM64 ?= zig cc -target aarch64-linux-musl
+CXX_LINUX_ARM64 ?= zig c++ -target aarch64-linux-musl
+
+CC_WINDOWS_AMD64 ?= zig cc -target x86_64-windows-gnu
+CXX_WINDOWS_AMD64 ?= zig c++ -target x86_64-windows-gnu
+
+CC_WINDOWS_ARM64 ?= zig cc -target aarch64-windows-gnu
+CXX_WINDOWS_ARM64 ?= zig c++ -target aarch64-windows-gnu
+
+build_lib_cshared:
+	$(MAKE) build_lib_linux
+	$(MAKE) build_lib_windows
+	$(MAKE) build_lib_macos
+
+build_lib_linux:
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=1 CC="$(CC_LINUX_AMD64)" CXX="$(CXX_LINUX_AMD64)" go build $(PARAMS) -buildmode=c-shared -tags "$(TAGS)" -o sing-box-lib-linux-amd64.so ./cmd/libbox_cshared
+	GOOS=linux GOARCH=arm64 CGO_ENABLED=1 CC="$(CC_LINUX_ARM64)" CXX="$(CXX_LINUX_ARM64)" go build $(PARAMS) -buildmode=c-shared -tags "$(TAGS)" -o sing-box-lib-linux-arm64.so ./cmd/libbox_cshared
+
+build_lib_windows:
+	GOOS=windows GOARCH=amd64 CGO_ENABLED=1 CC="$(CC_WINDOWS_AMD64)" CXX="$(CXX_WINDOWS_AMD64)" go build $(PARAMS) -buildmode=c-shared -tags "$(TAGS)" -o sing-box-lib-windows-amd64.dll ./cmd/libbox_cshared
+	GOOS=windows GOARCH=arm64 CGO_ENABLED=1 CC="$(CC_WINDOWS_ARM64)" CXX="$(CXX_WINDOWS_ARM64)" go build $(PARAMS) -buildmode=c-shared -tags "$(TAGS)" -o sing-box-lib-windows-arm64.dll ./cmd/libbox_cshared
+
+build_lib_macos:
+	GOOS=darwin GOARCH=amd64 CGO_ENABLED=1 go build $(PARAMS) -buildmode=c-shared -tags "$(TAGS)" -o sing-box-lib-macos-amd64.dylib ./cmd/libbox_cshared
+	GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 go build $(PARAMS) -buildmode=c-shared -tags "$(TAGS)" -o sing-box-lib-macos-arm64.dylib ./cmd/libbox_cshared
