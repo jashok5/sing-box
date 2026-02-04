@@ -102,7 +102,7 @@ func (l *ProxyListener) acceptLoop() {
 //
 //nolint:staticcheck
 func (l *ProxyListener) accept(ctx context.Context, conn *net.TCPConn) error {
-	return socks.HandleConnectionEx(ctx, conn, std_bufio.NewReader(conn), l.authenticator, l, nil, M.SocksaddrFromNet(conn.RemoteAddr()), nil)
+	return socks.HandleConnectionEx(ctx, conn, std_bufio.NewReader(conn), l.authenticator, l, nil, 0, M.SocksaddrFromNet(conn.RemoteAddr()), nil)
 }
 
 func (l *ProxyListener) NewConnectionEx(ctx context.Context, conn net.Conn, source M.Socksaddr, destination M.Socksaddr, onClose N.CloseHandlerFunc) {
