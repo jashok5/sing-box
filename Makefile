@@ -1,15 +1,18 @@
 NAME = sing-box
 COMMIT = $(shell git rev-parse --short HEAD)
-TAGS ?= with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_tailscale,with_ccm,with_ocm,badlinkname,tfogo_checklinkname0,with_shadowsocksr
+TAGS ?= $(shell cat release/DEFAULT_BUILD_TAGS_OTHERS)
 
 GOHOSTOS = $(shell go env GOHOSTOS)
 GOHOSTARCH = $(shell go env GOHOSTARCH)
 VERSION=$(shell CGO_ENABLED=0 GOOS=$(GOHOSTOS) GOARCH=$(GOHOSTARCH) go run github.com/sagernet/sing-box/cmd/internal/read_tag@latest)
 
-PARAMS = -v -trimpath -ldflags "-X 'github.com/sagernet/sing-box/constant.Version=$(VERSION)' -X 'internal/godebug.defaultGODEBUG=multipathtcp=0' -s -w -buildid= -checklinkname=0"
+LDFLAGS_SHARED = $(shell cat release/LDFLAGS)
+PARAMS = -v -trimpath -ldflags "-X 'github.com/sagernet/sing-box/constant.Version=$(VERSION)' $(LDFLAGS_SHARED) -s -w -buildid="
 MAIN_PARAMS = $(PARAMS) -tags "$(TAGS)"
 MAIN = ./cmd/sing-box
 PREFIX ?= $(shell go env GOPATH)
+SING_FFI ?= sing-ffi
+LIBBOX_FFI_CONFIG ?= ./experimental/libbox/ffi.json
 
 LIB_MAIN = ./cmd/libbox_cshared
 LIB_NAME = sing-box-lib
@@ -28,7 +31,7 @@ lib_linux:
 	export GOTOOLCHAIN=local && \
 	go build -buildmode=c-shared -o $(LIB_NAME)-linux-$(GOHOSTARCH).so $(MAIN_PARAMS) $(LIB_MAIN)
 
-lib_windows:
+lib_my_windows:
 	export GOTOOLCHAIN=local && \
 	go build -buildmode=c-shared -o $(LIB_NAME)-windows-$(GOHOSTARCH).dll $(MAIN_PARAMS) $(LIB_MAIN)
 
@@ -221,7 +224,7 @@ update_apple_version:
 update_macos_version:
 	MACOS_PROJECT_VERSION=$(shell go run -v ./cmd/internal/app_store_connect next_macos_project_version) go run ./cmd/internal/update_apple_version
 
-release_apple: lib_ios update_apple_version release_ios release_macos release_tvos release_macos_standalone
+release_apple: lib_apple update_apple_version release_ios release_macos release_tvos release_macos_standalone
 
 release_apple_beta: update_apple_version release_ios release_macos release_tvos
 
@@ -255,16 +258,21 @@ lib_android_debug:
 lib_apple:
 	go run ./cmd/internal/build_libbox -target apple
 
-lib_ios:
-	go run ./cmd/internal/build_libbox -target apple -platform ios -debug
+lib_windows:
+	$(SING_FFI) generate --config $(LIBBOX_FFI_CONFIG) --platform-type csharp
 
+lib_android_new:
+	$(SING_FFI) generate --config $(LIBBOX_FFI_CONFIG) --platform-type android
+
+lib_apple_new:
+	$(SING_FFI) generate --config $(LIBBOX_FFI_CONFIG) --platform-type apple
 lib:
 	go run ./cmd/internal/build_libbox -target android
 	go run ./cmd/internal/build_libbox -target apple
 
 lib_install:
-	go install -v github.com/sagernet/gomobile/cmd/gomobile@v0.1.11
-	go install -v github.com/sagernet/gomobile/cmd/gobind@v0.1.11
+	go install -v github.com/sagernet/gomobile/cmd/gomobile@v0.1.12
+	go install -v github.com/sagernet/gomobile/cmd/gobind@v0.1.12
 
 docs:
 	venv/bin/mkdocs serve
@@ -273,8 +281,8 @@ publish_docs:
 	venv/bin/mkdocs gh-deploy -m "Update" --force --ignore-version --no-history
 
 docs_install:
-	python -m venv venv
-	source ./venv/bin/activate && pip install --force-reinstall mkdocs-material=="9.*" mkdocs-static-i18n=="1.2.*"
+	python3 -m venv venv
+	source ./venv/bin/activate && pip install --force-reinstall mkdocs-material=="9.7.2" mkdocs-static-i18n=="1.2.*"
 
 clean:
 	rm -rf bin dist sing-box

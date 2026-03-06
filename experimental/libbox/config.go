@@ -22,7 +22,7 @@ import (
 	"github.com/sagernet/sing/service/filemanager"
 )
 
-func BaseContext(platformInterface PlatformInterface) context.Context {
+func baseContext(platformInterface PlatformInterface) context.Context {
 	dnsRegistry := include.DNSTransportRegistry()
 	if platformInterface != nil {
 		if localTransport := platformInterface.LocalDNSTransport(); localTransport != nil {
@@ -45,7 +45,7 @@ func parseConfig(ctx context.Context, configContent string) (option.Options, err
 }
 
 func CheckConfig(configContent string) error {
-	ctx := BaseContext(nil)
+	ctx := baseContext(nil)
 	options, err := parseConfig(ctx, configContent)
 	if err != nil {
 		return err
@@ -144,6 +144,18 @@ func (s *platformInterfaceStub) SendNotification(notification *adapter.Notificat
 	return nil
 }
 
+func (s *platformInterfaceStub) UsePlatformNeighborResolver() bool {
+	return false
+}
+
+func (s *platformInterfaceStub) StartNeighborMonitor(listener adapter.NeighborUpdateListener) error {
+	return os.ErrInvalid
+}
+
+func (s *platformInterfaceStub) CloseNeighborMonitor(listener adapter.NeighborUpdateListener) error {
+	return nil
+}
+
 func (s *platformInterfaceStub) UsePlatformLocalDNSTransport() bool {
 	return false
 }
@@ -189,7 +201,7 @@ func (s *interfaceMonitorStub) MyInterface() string {
 }
 
 func FormatConfig(configContent string) (*StringBox, error) {
-	options, err := parseConfig(BaseContext(nil), configContent)
+	options, err := parseConfig(baseContext(nil), configContent)
 	if err != nil {
 		return nil, err
 	}
