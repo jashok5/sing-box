@@ -168,7 +168,7 @@ func (s *StartedService) waitForStarted(ctx context.Context) error {
 func (s *StartedService) StartOrReloadService(profileContent string, options *OverrideOptions) error {
 	s.serviceAccess.Lock()
 	switch s.serviceStatus.Status {
-	case ServiceStatus_IDLE, ServiceStatus_STARTED, ServiceStatus_STARTING:
+	case ServiceStatus_IDLE, ServiceStatus_STARTED, ServiceStatus_STARTING, ServiceStatus_FATAL:
 	default:
 		s.serviceAccess.Unlock()
 		return os.ErrInvalid
@@ -226,13 +226,14 @@ func (s *StartedService) CloseService() error {
 		return os.ErrInvalid
 	}
 	s.updateStatus(ServiceStatus_STOPPING)
-	if s.instance != nil {
-		err := s.instance.Close()
+	instance := s.instance
+	s.instance = nil
+	if instance != nil {
+		err := instance.Close()
 		if err != nil {
 			return s.updateStatusError(err)
 		}
 	}
-	s.instance = nil
 	s.startedAt = time.Time{}
 	s.updateStatus(ServiceStatus_IDLE)
 	s.serviceAccess.Unlock()
