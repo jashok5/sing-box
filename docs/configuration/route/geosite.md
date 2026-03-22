@@ -1,3 +1,11 @@
+---
+icon: material/note-remove
+---
+
+!!! failure "Removed in sing-box 1.12.0"
+
+    Geosite is deprecated in sing-box 1.8.0 and removed in sing-box 1.12.0, check [Migration](/migration/#migrate-geosite-to-rule-sets).
+
 ### Structure
 
 ```json

@@ -17,7 +17,7 @@ import (
 	"github.com/sagernet/sing/common/control"
 	F "github.com/sagernet/sing/common/format"
 
-	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -36,6 +36,7 @@ const (
 	ImageHysteria2             = "tobyxdd/hysteria:v2"
 	ImageNginx                 = "nginx:stable"
 	ImageShadowTLS             = "ghcr.io/ihciah/shadow-tls:latest"
+	ImageShadowsocksR          = "teddysun/shadowsocks-r:latest"
 	ImageXRayCore              = "teddysun/xray:latest"
 	ImageShadowsocksLegacy     = "mritd/shadowsocks:latest"
 	ImageTUICServer            = "kilvn/tuic-server:latest"
@@ -52,6 +53,7 @@ var allImages = []string{
 	ImageHysteria,
 	ImageHysteria2,
 	ImageNginx,
+	ImageShadowsocksR,
 	ImageShadowTLS,
 	ImageXRayCore,
 	ImageShadowsocksLegacy,
@@ -68,7 +70,7 @@ func init() {
 	}
 	defer dockerClient.Close()
 
-	list, err := dockerClient.ImageList(context.Background(), types.ImageListOptions{All: true})
+	list, err := dockerClient.ImageList(context.Background(), image.ListOptions{All: true})
 	if err != nil {
 		log.Warn(err)
 		return
@@ -85,13 +87,13 @@ func init() {
 		return false
 	}
 
-	for _, image := range allImages {
-		if imageExist(image) {
+	for _, i := range allImages {
+		if imageExist(i) {
 			continue
 		}
 
-		log.Info("pulling image: ", image)
-		imageStream, err := dockerClient.ImagePull(context.Background(), image, types.ImagePullOptions{})
+		log.Info("pulling image: ", i)
+		imageStream, err := dockerClient.ImagePull(context.Background(), i, image.PullOptions{})
 		if err != nil {
 			panic(err)
 		}

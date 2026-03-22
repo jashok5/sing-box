@@ -1,3 +1,8 @@
+!!! quote "Changes in sing-box 1.11.0"
+
+    :material-plus: [server_ports](#server_ports)  
+    :material-plus: [hop_interval](#hop_interval)
+
 ### Structure
 
 ```json
@@ -7,6 +12,10 @@
   
   "server": "127.0.0.1",
   "server_port": 1080,
+  "server_ports": [
+    "2080:3000"
+  ],
+  "hop_interval": "",
   "up_mbps": 100,
   "down_mbps": 100,
   "obfs": {
@@ -22,9 +31,9 @@
 }
 ```
 
-!!! warning ""
+!!! note ""
 
-    QUIC, which is required by Hysteria2 is not included by default, see [Installation](./#installation).
+    You can ignore the JSON Array [] tag when the content is only one item
 
 !!! warning "Difference from official Hysteria2"
 
@@ -47,6 +56,24 @@ The server address.
 ==Required==
 
 The server port.
+
+Ignored if `server_ports` is set.
+
+#### server_ports
+
+!!! question "Since sing-box 1.11.0"
+
+Server port range list.
+
+Conflicts with `server_port`.
+
+#### hop_interval
+
+!!! question "Since sing-box 1.11.0"
+
+Port hopping interval.
+
+`30s` is used by default.
 
 #### up_mbps, down_mbps
 

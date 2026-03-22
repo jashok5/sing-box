@@ -29,7 +29,6 @@ var defaultClientHeader = http.Header{
 
 type Client struct {
 	ctx        context.Context
-	dialer     N.Dialer
 	serverAddr M.Socksaddr
 	transport  *http2.Transport
 	options    option.V2RayGRPCOptions
@@ -46,7 +45,6 @@ func NewClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr, opt
 	}
 	client := &Client{
 		ctx:        ctx,
-		dialer:     dialer,
 		serverAddr: serverAddr,
 		options:    options,
 		transport: &http2.Transport{
@@ -62,7 +60,6 @@ func NewClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr, opt
 		},
 		host: host,
 	}
-
 	if tlsConfig == nil {
 		client.transport.DialTLSContext = func(ctx context.Context, network, addr string, cfg *tls.STDConfig) (net.Conn, error) {
 			return dialer.DialContext(ctx, network, M.ParseSocksaddr(addr))
@@ -71,12 +68,9 @@ func NewClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr, opt
 		if len(tlsConfig.NextProtos()) == 0 {
 			tlsConfig.SetNextProtos([]string{http2.NextProtoTLS})
 		}
+		tlsDialer := tls.NewDialer(dialer, tlsConfig)
 		client.transport.DialTLSContext = func(ctx context.Context, network, addr string, cfg *tls.STDConfig) (net.Conn, error) {
-			conn, err := dialer.DialContext(ctx, network, M.ParseSocksaddr(addr))
-			if err != nil {
-				return nil, err
-			}
-			return tls.ClientHandshake(ctx, conn, tlsConfig)
+			return tlsDialer.DialTLSContext(ctx, M.ParseSocksaddr(addr))
 		}
 	}
 
@@ -100,7 +94,7 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
 			conn.setup(nil, err)
 		} else if response.StatusCode != 200 {
 			response.Body.Close()
-			conn.setup(nil, E.New("unexpected status: ", response.Status))
+			conn.setup(nil, E.New("v2ray-grpc: unexpected status: ", response.Status))
 		} else {
 			conn.setup(response.Body, nil)
 		}
@@ -109,8 +103,6 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
 }
 
 func (c *Client) Close() error {
-	if c.transport != nil {
-		v2rayhttp.CloseIdleConnections(c.transport)
-	}
+	v2rayhttp.ResetTransport(c.transport)
 	return nil
 }

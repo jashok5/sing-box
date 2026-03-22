@@ -6,7 +6,8 @@ import (
 
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
-	dns "github.com/sagernet/sing-dns"
+	"github.com/sagernet/sing/common"
+	"github.com/sagernet/sing/common/json/badoption"
 
 	"github.com/gofrs/uuid/v5"
 )
@@ -18,31 +19,30 @@ func TestTUICDomainUDP(t *testing.T) {
 			{
 				Type: C.TypeMixed,
 				Tag:  "mixed-in",
-				MixedOptions: option.HTTPMixedInboundOptions{
+				Options: &option.HTTPMixedInboundOptions{
 					ListenOptions: option.ListenOptions{
-						Listen:     option.NewListenAddress(netip.IPv4Unspecified()),
+						Listen:     common.Ptr(badoption.Addr(netip.IPv4Unspecified())),
 						ListenPort: clientPort,
 					},
 				},
 			},
 			{
 				Type: C.TypeTUIC,
-				TUICOptions: option.TUICInboundOptions{
+				Options: &option.TUICInboundOptions{
 					ListenOptions: option.ListenOptions{
-						Listen:     option.NewListenAddress(netip.IPv4Unspecified()),
+						Listen:     common.Ptr(badoption.Addr(netip.IPv4Unspecified())),
 						ListenPort: serverPort,
-						InboundOptions: option.InboundOptions{
-							DomainStrategy: option.DomainStrategy(dns.DomainStrategyUseIPv6),
-						},
 					},
 					Users: []option.TUICUser{{
 						UUID: uuid.Nil.String(),
 					}},
-					TLS: &option.InboundTLSOptions{
-						Enabled:         true,
-						ServerName:      "example.org",
-						CertificatePath: certPem,
-						KeyPath:         keyPem,
+					InboundTLSOptionsContainer: option.InboundTLSOptionsContainer{
+						TLS: &option.InboundTLSOptions{
+							Enabled:         true,
+							ServerName:      "example.org",
+							CertificatePath: certPem,
+							KeyPath:         keyPem,
+						},
 					},
 				},
 			},
@@ -54,16 +54,18 @@ func TestTUICDomainUDP(t *testing.T) {
 			{
 				Type: C.TypeTUIC,
 				Tag:  "tuic-out",
-				TUICOptions: option.TUICOutboundOptions{
+				Options: &option.TUICOutboundOptions{
 					ServerOptions: option.ServerOptions{
 						Server:     "127.0.0.1",
 						ServerPort: serverPort,
 					},
 					UUID: uuid.Nil.String(),
-					TLS: &option.OutboundTLSOptions{
-						Enabled:         true,
-						ServerName:      "example.org",
-						CertificatePath: certPem,
+					OutboundTLSOptionsContainer: option.OutboundTLSOptionsContainer{
+						TLS: &option.OutboundTLSOptions{
+							Enabled:         true,
+							ServerName:      "example.org",
+							CertificatePath: certPem,
+						},
 					},
 				},
 			},
@@ -71,9 +73,18 @@ func TestTUICDomainUDP(t *testing.T) {
 		Route: &option.RouteOptions{
 			Rules: []option.Rule{
 				{
+					Type: C.RuleTypeDefault,
 					DefaultOptions: option.DefaultRule{
-						Inbound:  []string{"mixed-in"},
-						Outbound: "tuic-out",
+						RawDefaultRule: option.RawDefaultRule{
+							Inbound: []string{"mixed-in"},
+						},
+						RuleAction: option.RuleAction{
+							Action: C.RuleActionTypeRoute,
+
+							RouteOptions: option.RouteActionOptions{
+								Outbound: "tuic-out",
+							},
+						},
 					},
 				},
 			},

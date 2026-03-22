@@ -18,7 +18,7 @@ import (
 var commandConnectFlagNetwork string
 
 var commandConnect = &cobra.Command{
-	Use:   "connect [address]",
+	Use:   "connect <address>",
 	Short: "Connect to an address",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
@@ -45,7 +45,7 @@ func connect(address string) error {
 		return err
 	}
 	defer instance.Close()
-	dialer, err := createDialer(instance, commandConnectFlagNetwork, commandToolsFlagOutbound)
+	dialer, err := createDialer(instance, commandToolsFlagOutbound)
 	if err != nil {
 		return err
 	}

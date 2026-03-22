@@ -1,31 +1,51 @@
 NAME = sing-box
 COMMIT = $(shell git rev-parse --short HEAD)
-TAGS_GO118 = with_gvisor,with_dhcp,with_wireguard,with_utls,with_reality_server,with_clash_api
-TAGS_GO120 = with_quic,with_ech
-TAGS ?= $(TAGS_GO118),$(TAGS_GO120)
-TAGS_TEST ?= with_gvisor,with_quic,with_wireguard,with_grpc,with_ech,with_utls,with_reality_server
+TAGS ?= $(shell cat release/DEFAULT_BUILD_TAGS_OTHERS)
 
 GOHOSTOS = $(shell go env GOHOSTOS)
 GOHOSTARCH = $(shell go env GOHOSTARCH)
-VERSION=$(shell CGO_ENABLED=0 GOOS=$(GOHOSTOS) GOARCH=$(GOHOSTARCH) go run ./cmd/internal/read_tag)
+VERSION=$(shell CGO_ENABLED=0 GOOS=$(GOHOSTOS) GOARCH=$(GOHOSTARCH) go run github.com/sagernet/sing-box/cmd/internal/read_tag@latest)
 
-PARAMS = -v -trimpath -ldflags "-X 'github.com/sagernet/sing-box/constant.Version=$(VERSION)' -s -w -buildid="
-MAIN_PARAMS = $(PARAMS) -tags $(TAGS)
+LDFLAGS_SHARED = $(shell cat release/LDFLAGS)
+PARAMS = -v -trimpath -ldflags "-X 'github.com/sagernet/sing-box/constant.Version=$(VERSION)' $(LDFLAGS_SHARED) -s -w -buildid="
+MAIN_PARAMS = $(PARAMS) -tags "$(TAGS)"
 MAIN = ./cmd/sing-box
 PREFIX ?= $(shell go env GOPATH)
+SING_FFI ?= sing-ffi
+LIBBOX_FFI_CONFIG ?= ./experimental/libbox/ffi.json
 
-.PHONY: test release docs
+LIB_MAIN = ./cmd/libbox_cshared
+LIB_NAME = sing-box-lib
+
+.PHONY: test release docs build lib_darwin lib_linux lib_windows
 
 build:
+	export GOTOOLCHAIN=local && \
 	go build $(MAIN_PARAMS) $(MAIN)
 
-ci_build_go118:
-	go build $(PARAMS) $(MAIN)
-	go build $(PARAMS) -tags "$(TAGS_GO118)" $(MAIN)
+lib_darwin:
+	export GOTOOLCHAIN=local && \
+	go build -buildmode=c-shared -o $(LIB_NAME)-macos-$(GOHOSTARCH).dylib $(MAIN_PARAMS) $(LIB_MAIN)
+
+lib_linux:
+	export GOTOOLCHAIN=local && \
+	go build -buildmode=c-shared -o $(LIB_NAME)-linux-$(GOHOSTARCH).so $(MAIN_PARAMS) $(LIB_MAIN)
+
+lib_my_windows:
+	export GOTOOLCHAIN=local && \
+	go build -buildmode=c-shared -o $(LIB_NAME)-windows-$(GOHOSTARCH).dll $(MAIN_PARAMS) $(LIB_MAIN)
+
+race:
+	export GOTOOLCHAIN=local && \
+	go build -race $(MAIN_PARAMS) $(MAIN)
 
 ci_build:
-	go build $(PARAMS) $(MAIN)
+	export GOTOOLCHAIN=local && \
+	go build $(PARAMS) $(MAIN) && \
 	go build $(MAIN_PARAMS) $(MAIN)
+
+generate_completions:
+	go run -v --tags "$(TAGS),generate,generate_completions" $(MAIN)
 
 install:
 	go build -o $(PREFIX)/bin/$(NAME) $(MAIN_PARAMS) $(MAIN)
@@ -34,6 +54,9 @@ fmt:
 	@gofumpt -l -w .
 	@gofmt -s -w .
 	@gci write --custom-order -s standard -s "prefix(github.com/sagernet/)" -s "default" .
+
+fmt_docs:
+	go run ./cmd/internal/format_docs
 
 fmt_install:
 	go install -v mvdan.cc/gofumpt@latest
@@ -47,7 +70,7 @@ lint:
 	GOOS=freebsd golangci-lint run ./...
 
 lint_install:
-	go install -v github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	go install -v github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 
 proto:
 	@go run ./cmd/internal/protogen
@@ -58,102 +81,161 @@ proto_install:
 	go install -v google.golang.org/protobuf/cmd/protoc-gen-go@latest
 	go install -v google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 
+update_certificates:
+	go run ./cmd/internal/update_certificates
+
 release:
-	go run ./cmd/internal/build goreleaser release --clean --skip-publish || exit 1
+	go run ./cmd/internal/build goreleaser release --clean --skip publish
 	mkdir dist/release
-	mv dist/*.tar.gz dist/*.zip dist/*.deb dist/*.rpm dist/*.pkg.tar.zst dist/release
-	ghr --replace --draft --prerelease -p 3 "v${VERSION}" dist/release
+	mv dist/*.tar.gz \
+		dist/*.zip \
+		dist/*.deb \
+		dist/*.rpm \
+		dist/*_amd64.pkg.tar.zst \
+		dist/*_arm64.pkg.tar.zst \
+		dist/release
+	ghr --replace --draft --prerelease -p 5 "v${VERSION}" dist/release
 	rm -r dist/release
 
+release_repo:
+	go run ./cmd/internal/build goreleaser release -f .goreleaser.fury.yaml --clean
+
 release_install:
-	go install -v github.com/goreleaser/goreleaser@latest
 	go install -v github.com/tcnksm/ghr@latest
 
 update_android_version:
 	go run ./cmd/internal/update_android_version
 
 build_android:
-	cd ../sing-box-for-android && ./gradlew :app:assemblePlayRelease && ./gradlew --stop
+	cd ../sing-box-for-android && ./gradlew :app:clean :app:assembleOtherRelease :app:assembleOtherLegacyRelease && ./gradlew --stop
 
 upload_android:
 	mkdir -p dist/release_android
-	cp ../sing-box-for-android/app/build/outputs/apk/play/release/*.apk dist/release_android
-	ghr --replace --draft --prerelease -p 3 "v${VERSION}" dist/release_android
+	cp ../sing-box-for-android/app/build/outputs/apk/other/release/*.apk dist/release_android
+	cp ../sing-box-for-android/app/build/outputs/apk/otherLegacy/release/*.apk dist/release_android
+	ghr --replace --draft --prerelease -p 5 "v${VERSION}" dist/release_android
 	rm -rf dist/release_android
 
 release_android: lib_android update_android_version build_android upload_android
 
 publish_android:
-	cd ../sing-box-for-android && ./gradlew :app:publishPlayReleaseBundle
+	cd ../sing-box-for-android && ./gradlew :app:publishPlayReleaseBundle && ./gradlew --stop
 
-publish_android_appcenter:
-	cd ../sing-box-for-android && ./gradlew :app:appCenterAssembleAndUploadPlayRelease
-
+# TODO: find why and remove `-destination 'generic/platform=iOS'`
+# TODO: remove xcode clean when fix control widget fixed
 build_ios:
 	cd ../sing-box-for-apple && \
 	rm -rf build/SFI.xcarchive && \
-	xcodebuild archive -scheme SFI -configuration Release -archivePath build/SFI.xcarchive
+	xcodebuild clean -scheme SFI && \
+	xcodebuild archive -scheme SFI -configuration Release -destination 'generic/platform=iOS' -archivePath build/SFI.xcarchive -allowProvisioningUpdates | xcbeautify | grep -A 10 -e "Archive Succeeded" -e "ARCHIVE FAILED" -e "❌"
 
 upload_ios_app_store:
 	cd ../sing-box-for-apple && \
 	xcodebuild -exportArchive -archivePath build/SFI.xcarchive -exportOptionsPlist SFI/Upload.plist -allowProvisioningUpdates
+
+export_ios_ipa:
+	cd ../sing-box-for-apple && \
+	xcodebuild -exportArchive -archivePath build/SFI.xcarchive -exportOptionsPlist SFI/Export.plist -allowProvisioningUpdates -exportPath build/SFI && \
+	cp build/SFI/sing-box.ipa dist/SFI.ipa
+
+upload_ios_ipa:
+	cd dist && \
+	cp SFI.ipa "SFI-${VERSION}.ipa" && \
+	ghr --replace --draft --prerelease "v${VERSION}" "SFI-${VERSION}.ipa"
 
 release_ios: build_ios upload_ios_app_store
 
 build_macos:
 	cd ../sing-box-for-apple && \
 	rm -rf build/SFM.xcarchive && \
-	xcodebuild archive -scheme SFM -configuration Release -archivePath build/SFM.xcarchive
+	xcodebuild archive -scheme SFM -configuration Release -archivePath build/SFM.xcarchive -allowProvisioningUpdates | xcbeautify | grep -A 10 -e "Archive Succeeded" -e "ARCHIVE FAILED" -e "❌"
 
 upload_macos_app_store:
 	cd ../sing-box-for-apple && \
-	xcodebuild -exportArchive -archivePath build/SFM.xcarchive -exportOptionsPlist SFI/Upload.plist  -allowProvisioningUpdates
+	xcodebuild -exportArchive -archivePath build/SFM.xcarchive -exportOptionsPlist SFI/Upload.plist -allowProvisioningUpdates
 
 release_macos: build_macos upload_macos_app_store
 
-build_macos_independent:
-	cd ../sing-box-for-apple && \
-	rm -rf build/SFT.System.xcarchive && \
-	xcodebuild archive -scheme SFM.System -configuration Release -archivePath build/SFM.System.xcarchive
+build_macos_standalone:
+	$(MAKE) -C ../sing-box-for-apple archive_macos_standalone
 
-notarize_macos_independent:
-	cd ../sing-box-for-apple && \
-	xcodebuild -exportArchive -archivePath "build/SFM.System.xcarchive" -exportOptionsPlist SFM.System/Upload.plist  -allowProvisioningUpdates
+build_macos_dmg:
+	$(MAKE) -C ../sing-box-for-apple build_macos_dmg
 
-wait_notarize_macos_independent:
-	sleep 60
+build_macos_pkg:
+	$(MAKE) -C ../sing-box-for-apple build_macos_pkg
 
-export_macos_independent:
-	rm -rf dist/SFM
+notarize_macos_dmg:
+	$(MAKE) -C ../sing-box-for-apple notarize_macos_dmg
+
+notarize_macos_pkg:
+	$(MAKE) -C ../sing-box-for-apple notarize_macos_pkg
+
+upload_macos_dmg:
 	mkdir -p dist/SFM
-	cd ../sing-box-for-apple && \
-	xcodebuild -exportNotarizedApp -archivePath build/SFM.System.xcarchive -exportPath "../sing-box/dist/SFM"
+	cp ../sing-box-for-apple/build/SFM-Apple.dmg "dist/SFM/SFM-${VERSION}-Apple.dmg"
+	cp ../sing-box-for-apple/build/SFM-Intel.dmg "dist/SFM/SFM-${VERSION}-Intel.dmg"
+	cp ../sing-box-for-apple/build/SFM-Universal.dmg "dist/SFM/SFM-${VERSION}-Universal.dmg"
+	ghr --replace --draft --prerelease "v${VERSION}" "dist/SFM/SFM-${VERSION}-Apple.dmg"
+	ghr --replace --draft --prerelease "v${VERSION}" "dist/SFM/SFM-${VERSION}-Intel.dmg"
+	ghr --replace --draft --prerelease "v${VERSION}" "dist/SFM/SFM-${VERSION}-Universal.dmg"
 
-upload_macos_independent:
-	cd dist/SFM && \
-	rm -f *.zip && \
-	zip -ry "SFM-${VERSION}-universal.zip" SFM.app && \
-	ghr --replace --draft --prerelease "v${VERSION}" *.zip
+upload_macos_pkg:
+	mkdir -p dist/SFM
+	cp ../sing-box-for-apple/build/SFM-Apple.pkg "dist/SFM/SFM-${VERSION}-Apple.pkg"
+	cp ../sing-box-for-apple/build/SFM-Intel.pkg "dist/SFM/SFM-${VERSION}-Intel.pkg"
+	cp ../sing-box-for-apple/build/SFM-Universal.pkg "dist/SFM/SFM-${VERSION}-Universal.pkg"
+	ghr --replace --draft --prerelease "v${VERSION}" "dist/SFM/SFM-${VERSION}-Apple.pkg"
+	ghr --replace --draft --prerelease "v${VERSION}" "dist/SFM/SFM-${VERSION}-Intel.pkg"
+	ghr --replace --draft --prerelease "v${VERSION}" "dist/SFM/SFM-${VERSION}-Universal.pkg"
 
-release_macos_independent: build_macos_independent notarize_macos_independent wait_notarize_macos_independent export_macos_independent upload_macos_independent
+upload_macos_dsyms:
+	mkdir -p dist/SFM
+	cd ../sing-box-for-apple/build/SFM.System-universal.xcarchive && zip -r SFM.dSYMs.zip dSYMs
+	cp ../sing-box-for-apple/build/SFM.System-universal.xcarchive/SFM.dSYMs.zip "dist/SFM/SFM-${VERSION}.dSYMs.zip"
+	ghr --replace --draft --prerelease "v${VERSION}" "dist/SFM/SFM-${VERSION}.dSYMs.zip"
+
+release_macos_standalone: build_macos_pkg notarize_macos_pkg upload_macos_pkg upload_macos_dsyms
 
 build_tvos:
 	cd ../sing-box-for-apple && \
 	rm -rf build/SFT.xcarchive && \
-	xcodebuild archive -scheme SFT -configuration Release -archivePath build/SFT.xcarchive
+	xcodebuild archive -scheme SFT -configuration Release -archivePath build/SFT.xcarchive -allowProvisioningUpdates | xcbeautify | grep -A 10 -e "Archive Succeeded" -e "ARCHIVE FAILED" -e "❌"
 
 upload_tvos_app_store:
 	cd ../sing-box-for-apple && \
-	xcodebuild -exportArchive -archivePath "build/SFT.xcarchive" -exportOptionsPlist SFI/Upload.plist  -allowProvisioningUpdates
+	xcodebuild -exportArchive -archivePath "build/SFT.xcarchive" -exportOptionsPlist SFI/Upload.plist -allowProvisioningUpdates
+
+export_tvos_ipa:
+	cd ../sing-box-for-apple && \
+	xcodebuild -exportArchive -archivePath "build/SFT.xcarchive" -exportOptionsPlist SFI/Export.plist -allowProvisioningUpdates -exportPath build/SFT && \
+	cp build/SFT/sing-box.ipa dist/SFT.ipa
+
+upload_tvos_ipa:
+	cd dist && \
+	cp SFT.ipa "SFT-${VERSION}.ipa" && \
+	ghr --replace --draft --prerelease "v${VERSION}" "SFT-${VERSION}.ipa"
 
 release_tvos: build_tvos upload_tvos_app_store
 
 update_apple_version:
 	go run ./cmd/internal/update_apple_version
 
-release_apple: lib_ios update_apple_version release_ios release_macos release_tvos release_macos_independent
+update_macos_version:
+	MACOS_PROJECT_VERSION=$(shell go run -v ./cmd/internal/app_store_connect next_macos_project_version) go run ./cmd/internal/update_apple_version
+
+release_apple: lib_apple update_apple_version release_ios release_macos release_tvos release_macos_standalone
 
 release_apple_beta: update_apple_version release_ios release_macos release_tvos
+
+publish_testflight:
+	go run -v ./cmd/internal/app_store_connect publish_testflight $(filter-out $@,$(MAKECMDGOALS))
+
+prepare_app_store:
+	go run -v ./cmd/internal/app_store_connect prepare_app_store
+
+publish_app_store:
+	go run -v ./cmd/internal/app_store_connect publish_app_store
 
 test:
 	@go test -v ./... && \
@@ -170,26 +252,38 @@ test_stdio:
 lib_android:
 	go run ./cmd/internal/build_libbox -target android
 
-lib_ios:
-	go run ./cmd/internal/build_libbox -target ios
+lib_android_debug:
+	go run ./cmd/internal/build_libbox -target android -debug
 
+lib_apple:
+	go run ./cmd/internal/build_libbox -target apple
+
+lib_windows:
+	$(SING_FFI) generate --config $(LIBBOX_FFI_CONFIG) --platform-type csharp
+
+lib_android_new:
+	$(SING_FFI) generate --config $(LIBBOX_FFI_CONFIG) --platform-type android
+
+lib_apple_new:
+	$(SING_FFI) generate --config $(LIBBOX_FFI_CONFIG) --platform-type apple
 lib:
 	go run ./cmd/internal/build_libbox -target android
-	go run ./cmd/internal/build_libbox -target ios
+	go run ./cmd/internal/build_libbox -target apple
 
 lib_install:
-	go get -v -d
-	go install -v github.com/sagernet/gomobile/cmd/gomobile@v0.0.0-20230915142329-c6740b6d2950
-	go install -v github.com/sagernet/gomobile/cmd/gobind@v0.0.0-20230915142329-c6740b6d2950
+	go install -v github.com/sagernet/gomobile/cmd/gomobile@v0.1.12
+	go install -v github.com/sagernet/gomobile/cmd/gobind@v0.1.12
 
 docs:
-	mkdocs serve
+	venv/bin/mkdocs serve
 
 publish_docs:
-	mkdocs gh-deploy -m "Update" --force --ignore-version --no-history
+	venv/bin/mkdocs gh-deploy -m "Update" --force --ignore-version --no-history
 
 docs_install:
-	pip install --force-reinstall mkdocs-material=="9.*" mkdocs-static-i18n=="1.2.*"
+	python3 -m venv venv
+	source ./venv/bin/activate && pip install --force-reinstall mkdocs-material=="9.7.2" mkdocs-static-i18n=="1.2.*"
+
 clean:
 	rm -rf bin dist sing-box
 	rm -f $(shell go env GOPATH)/sing-box
@@ -198,3 +292,52 @@ update:
 	git fetch
 	git reset FETCH_HEAD --hard
 	git clean -fdx
+
+build_all_platform: build_linux_amd64 build_linux_arm64 build_windows_amd64 build_windows_arm64 build_darwin_amd64 build_darwin_arm64
+
+build_linux_amd64:
+	GOOS=linux GOARCH=amd64 GOAMD64=v1 go build $(MAIN_PARAMS) -o sing-box_linux_amd64 $(MAIN)
+
+build_linux_arm64:
+	GOOS=linux GOARCH=arm64 go build $(MAIN_PARAMS) -o sing-box_linux_arm64 $(MAIN)
+
+build_windows_amd64:
+	GOOS=windows GOARCH=amd64 GOAMD64=v1 go build $(MAIN_PARAMS) -o sing-box_windows_amd64.exe $(MAIN)
+
+build_windows_arm64:
+	GOOS=windows GOARCH=arm64 go build $(MAIN_PARAMS) -o sing-box_windows_arm64.exe $(MAIN)
+
+build_darwin_amd64:
+	GOOS=darwin GOARCH=amd64 GOAMD64=v1 go build $(MAIN_PARAMS) -o sing-box_darwin_amd64 $(MAIN)
+
+build_darwin_arm64:
+	GOOS=darwin GOARCH=arm64 go build $(MAIN_PARAMS) -o sing-box_darwin_arm64 $(MAIN)
+
+CC_LINUX_AMD64 ?= zig cc -target x86_64-linux-gnu.2.18 -O3 -s
+CXX_LINUX_AMD64 ?= zig c++ -target x86_64-linux-gnu.2.18 -O3 -s
+
+CC_LINUX_ARM64 ?= zig cc -target aarch64-linux-gnu.2.18 -O3 -s
+CXX_LINUX_ARM64 ?= zig c++ -target aarch64-linux-gnu.2.18 -O3 -s
+
+CC_WINDOWS_AMD64 ?= zig cc -target x86_64-windows-gnu -O3 -s
+CXX_WINDOWS_AMD64 ?= zig c++ -target x86_64-windows-gnu -O3 -s
+
+CC_WINDOWS_ARM64 ?= zig cc -target aarch64-windows-gnu -O3 -s
+CXX_WINDOWS_ARM64 ?= zig c++ -target aarch64-windows-gnu -O3 -s
+
+build_lib_cshared:
+	$(MAKE) build_lib_linux
+	$(MAKE) build_lib_windows
+	$(MAKE) build_lib_macos
+
+build_lib_linux:
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=1 CC="$(CC_LINUX_AMD64)" CXX="$(CXX_LINUX_AMD64)" go build $(PARAMS) -buildmode=c-shared -tags "$(TAGS)" -o sing-box-lib-linux-amd64.so ./cmd/libbox_cshared
+	GOOS=linux GOARCH=arm64 CGO_ENABLED=1 CC="$(CC_LINUX_ARM64)" CXX="$(CXX_LINUX_ARM64)" go build $(PARAMS) -buildmode=c-shared -tags "$(TAGS)" -o sing-box-lib-linux-arm64.so ./cmd/libbox_cshared
+
+build_lib_windows:
+	GOOS=windows GOARCH=amd64 CGO_ENABLED=1 CC="$(CC_WINDOWS_AMD64)" CXX="$(CXX_WINDOWS_AMD64)" go build $(PARAMS) -buildmode=c-shared -tags "$(TAGS)" -o sing-box-lib-windows-amd64.dll ./cmd/libbox_cshared
+	GOOS=windows GOARCH=arm64 CGO_ENABLED=1 CC="$(CC_WINDOWS_ARM64)" CXX="$(CXX_WINDOWS_ARM64)" go build $(PARAMS) -buildmode=c-shared -tags "$(TAGS)" -o sing-box-lib-windows-arm64.dll ./cmd/libbox_cshared
+
+build_lib_macos:
+	GOOS=darwin GOARCH=amd64 CGO_ENABLED=1 go build $(PARAMS) -buildmode=c-shared -tags "$(TAGS)" -o sing-box-lib-macos-amd64.dylib ./cmd/libbox_cshared
+	GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 go build $(PARAMS) -buildmode=c-shared -tags "$(TAGS)" -o sing-box-lib-macos-arm64.dylib ./cmd/libbox_cshared

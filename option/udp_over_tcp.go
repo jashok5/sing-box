@@ -1,7 +1,7 @@
 package option
 
 import (
-	"github.com/sagernet/sing-box/common/json"
+	"github.com/sagernet/sing/common/json"
 	"github.com/sagernet/sing/common/uot"
 )
 
@@ -26,5 +26,5 @@ func (o *UDPOverTCPOptions) UnmarshalJSON(bytes []byte) error {
 	if err == nil {
 		return nil
 	}
-	return json.Unmarshal(bytes, (*_UDPOverTCPOptions)(o))
+	return json.UnmarshalDisallowUnknownFields(bytes, (*_UDPOverTCPOptions)(o))
 }

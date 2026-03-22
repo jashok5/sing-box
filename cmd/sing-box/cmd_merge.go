@@ -6,19 +6,19 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/sagernet/sing-box/common/json"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
+	"github.com/sagernet/sing/common/json"
 	"github.com/sagernet/sing/common/rw"
 
 	"github.com/spf13/cobra"
 )
 
 var commandMerge = &cobra.Command{
-	Use:   "merge [output]",
+	Use:   "merge <output-path>",
 	Short: "Merge configurations",
 	Run: func(cmd *cobra.Command, args []string) {
 		err := merge(args[0])
@@ -54,7 +54,11 @@ func merge(outputPath string) error {
 			return nil
 		}
 	}
-	err = rw.WriteFile(outputPath, buffer.Bytes())
+	err = rw.MkdirParent(outputPath)
+	if err != nil {
+		return err
+	}
+	err = os.WriteFile(outputPath, buffer.Bytes(), 0o644)
 	if err != nil {
 		return err
 	}
@@ -64,53 +68,19 @@ func merge(outputPath string) error {
 }
 
 func mergePathResources(options *option.Options) error {
-	for index, inbound := range options.Inbounds {
-		switch inbound.Type {
-		case C.TypeHTTP:
-			inbound.HTTPOptions.TLS = mergeTLSInboundOptions(inbound.HTTPOptions.TLS)
-		case C.TypeMixed:
-			inbound.MixedOptions.TLS = mergeTLSInboundOptions(inbound.MixedOptions.TLS)
-		case C.TypeVMess:
-			inbound.VMessOptions.TLS = mergeTLSInboundOptions(inbound.VMessOptions.TLS)
-		case C.TypeTrojan:
-			inbound.TrojanOptions.TLS = mergeTLSInboundOptions(inbound.TrojanOptions.TLS)
-		case C.TypeNaive:
-			inbound.NaiveOptions.TLS = mergeTLSInboundOptions(inbound.NaiveOptions.TLS)
-		case C.TypeHysteria:
-			inbound.HysteriaOptions.TLS = mergeTLSInboundOptions(inbound.HysteriaOptions.TLS)
-		case C.TypeVLESS:
-			inbound.VLESSOptions.TLS = mergeTLSInboundOptions(inbound.VLESSOptions.TLS)
-		case C.TypeTUIC:
-			inbound.TUICOptions.TLS = mergeTLSInboundOptions(inbound.TUICOptions.TLS)
-		case C.TypeHysteria2:
-			inbound.Hysteria2Options.TLS = mergeTLSInboundOptions(inbound.Hysteria2Options.TLS)
-		default:
-			continue
+	for _, inbound := range options.Inbounds {
+		if tlsOptions, containsTLSOptions := inbound.Options.(option.InboundTLSOptionsWrapper); containsTLSOptions {
+			tlsOptions.ReplaceInboundTLSOptions(mergeTLSInboundOptions(tlsOptions.TakeInboundTLSOptions()))
 		}
-		options.Inbounds[index] = inbound
 	}
-	for index, outbound := range options.Outbounds {
+	for _, outbound := range options.Outbounds {
 		switch outbound.Type {
-		case C.TypeHTTP:
-			outbound.HTTPOptions.TLS = mergeTLSOutboundOptions(outbound.HTTPOptions.TLS)
-		case C.TypeVMess:
-			outbound.VMessOptions.TLS = mergeTLSOutboundOptions(outbound.VMessOptions.TLS)
-		case C.TypeTrojan:
-			outbound.TrojanOptions.TLS = mergeTLSOutboundOptions(outbound.TrojanOptions.TLS)
-		case C.TypeHysteria:
-			outbound.HysteriaOptions.TLS = mergeTLSOutboundOptions(outbound.HysteriaOptions.TLS)
 		case C.TypeSSH:
-			outbound.SSHOptions = mergeSSHOutboundOptions(outbound.SSHOptions)
-		case C.TypeVLESS:
-			outbound.VLESSOptions.TLS = mergeTLSOutboundOptions(outbound.VLESSOptions.TLS)
-		case C.TypeTUIC:
-			outbound.TUICOptions.TLS = mergeTLSOutboundOptions(outbound.TUICOptions.TLS)
-		case C.TypeHysteria2:
-			outbound.Hysteria2Options.TLS = mergeTLSOutboundOptions(outbound.Hysteria2Options.TLS)
-		default:
-			continue
+			mergeSSHOutboundOptions(outbound.Options.(*option.SSHOutboundOptions))
 		}
-		options.Outbounds[index] = outbound
+		if tlsOptions, containsTLSOptions := outbound.Options.(option.OutboundTLSOptionsWrapper); containsTLSOptions {
+			tlsOptions.ReplaceOutboundTLSOptions(mergeTLSOutboundOptions(tlsOptions.TakeOutboundTLSOptions()))
+		}
 	}
 	return nil
 }
@@ -158,13 +128,12 @@ func mergeTLSOutboundOptions(options *option.OutboundTLSOptions) *option.Outboun
 	return options
 }
 
-func mergeSSHOutboundOptions(options option.SSHOutboundOptions) option.SSHOutboundOptions {
+func mergeSSHOutboundOptions(options *option.SSHOutboundOptions) {
 	if options.PrivateKeyPath != "" {
 		if content, err := os.ReadFile(os.ExpandEnv(options.PrivateKeyPath)); err == nil {
 			options.PrivateKey = trimStringArray(strings.Split(string(content), "\n"))
 		}
 	}
-	return options
 }
 
 func trimStringArray(array []string) []string {

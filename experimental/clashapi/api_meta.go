@@ -4,22 +4,32 @@ import (
 	"bytes"
 	"net"
 	"net/http"
+	"runtime/debug"
 	"time"
 
-	"github.com/sagernet/sing-box/common/json"
 	"github.com/sagernet/sing-box/experimental/clashapi/trafficontrol"
+	"github.com/sagernet/sing/common/json"
 	"github.com/sagernet/ws"
 	"github.com/sagernet/ws/wsutil"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/render"
 )
 
 // API created by Clash.Meta
 
 func (s *Server) setupMetaAPI(r chi.Router) {
+	if s.logDebug {
+		r := chi.NewRouter()
+		r.Put("/gc", func(w http.ResponseWriter, r *http.Request) {
+			debug.FreeOSMemory()
+		})
+		r.Mount("/", middleware.Profiler())
+	}
 	r.Get("/memory", memory(s.trafficManager))
 	r.Mount("/group", groupRouter(s))
+	r.Mount("/upgrade", upgradeRouter(s))
 }
 
 type Memory struct {
