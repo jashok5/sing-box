@@ -202,10 +202,15 @@ func (s *LocalRuleSet) Close() error {
 }
 
 func (s *LocalRuleSet) Match(metadata *adapter.InboundContext) bool {
+	return !s.matchStates(metadata).isEmpty()
+}
+
+func (s *LocalRuleSet) matchStates(metadata *adapter.InboundContext) ruleMatchStateSet {
+	var stateSet ruleMatchStateSet
 	for _, rule := range s.rules {
-		if rule.Match(metadata) {
-			return true
-		}
+		nestedMetadata := *metadata
+		nestedMetadata.ResetRuleMatchCache()
+		stateSet = stateSet.merge(matchHeadlessRuleStates(rule, &nestedMetadata))
 	}
-	return false
+	return stateSet
 }
