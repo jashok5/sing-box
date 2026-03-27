@@ -98,9 +98,6 @@ func (l *ProxyListener) acceptLoop() {
 	}
 }
 
-// TODO: migrate to new api
-//
-//nolint:staticcheck
 func (l *ProxyListener) accept(ctx context.Context, conn *net.TCPConn) error {
 	return socks.HandleConnectionEx(ctx, conn, std_bufio.NewReader(conn), l.authenticator, l, nil, 0, M.SocksaddrFromNet(conn.RemoteAddr()), nil)
 }

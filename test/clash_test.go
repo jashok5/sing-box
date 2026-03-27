@@ -36,7 +36,6 @@ const (
 	ImageHysteria2             = "tobyxdd/hysteria:v2"
 	ImageNginx                 = "nginx:stable"
 	ImageShadowTLS             = "ghcr.io/ihciah/shadow-tls:latest"
-	ImageShadowsocksR          = "teddysun/shadowsocks-r:latest"
 	ImageXRayCore              = "teddysun/xray:latest"
 	ImageShadowsocksLegacy     = "mritd/shadowsocks:latest"
 	ImageTUICServer            = "kilvn/tuic-server:latest"
@@ -53,7 +52,6 @@ var allImages = []string{
 	ImageHysteria,
 	ImageHysteria2,
 	ImageNginx,
-	ImageShadowsocksR,
 	ImageShadowTLS,
 	ImageXRayCore,
 	ImageShadowsocksLegacy,

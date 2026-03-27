@@ -2,7 +2,6 @@ package adapter
 
 import (
 	"context"
-	"net"
 	"net/netip"
 	"time"
 
@@ -83,8 +82,6 @@ type InboundContext struct {
 	SourceGeoIPCode      string
 	GeoIPCode            string
 	ProcessInfo          *ConnectionOwner
-	SourceMACAddress     net.HardwareAddr
-	SourceHostname       string
 	QueryType            uint16
 	FakeIP               bool
 

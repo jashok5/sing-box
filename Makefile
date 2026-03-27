@@ -23,18 +23,6 @@ build:
 	export GOTOOLCHAIN=local && \
 	go build $(MAIN_PARAMS) $(MAIN)
 
-lib_darwin:
-	export GOTOOLCHAIN=local && \
-	go build -buildmode=c-shared -o $(LIB_NAME)-macos-$(GOHOSTARCH).dylib $(MAIN_PARAMS) $(LIB_MAIN)
-
-lib_linux:
-	export GOTOOLCHAIN=local && \
-	go build -buildmode=c-shared -o $(LIB_NAME)-linux-$(GOHOSTARCH).so $(MAIN_PARAMS) $(LIB_MAIN)
-
-lib_my_windows:
-	export GOTOOLCHAIN=local && \
-	go build -buildmode=c-shared -o $(LIB_NAME)-windows-$(GOHOSTARCH).dll $(MAIN_PARAMS) $(LIB_MAIN)
-
 race:
 	export GOTOOLCHAIN=local && \
 	go build -race $(MAIN_PARAMS) $(MAIN)
@@ -252,9 +240,6 @@ test_stdio:
 lib_android:
 	go run ./cmd/internal/build_libbox -target android
 
-lib_android_debug:
-	go run ./cmd/internal/build_libbox -target android -debug
-
 lib_apple:
 	go run ./cmd/internal/build_libbox -target apple
 
@@ -266,9 +251,6 @@ lib_android_new:
 
 lib_apple_new:
 	$(SING_FFI) generate --config $(LIBBOX_FFI_CONFIG) --platform-type apple
-lib:
-	go run ./cmd/internal/build_libbox -target android
-	go run ./cmd/internal/build_libbox -target apple
 
 lib_install:
 	go install -v github.com/sagernet/gomobile/cmd/gomobile@v0.1.12
@@ -325,6 +307,18 @@ CXX_WINDOWS_AMD64 ?= zig c++ -target x86_64-windows-gnu -O3 -s
 CC_WINDOWS_ARM64 ?= zig cc -target aarch64-windows-gnu -O3 -s
 CXX_WINDOWS_ARM64 ?= zig c++ -target aarch64-windows-gnu -O3 -s
 
+lib_darwin:
+	export GOTOOLCHAIN=local && \
+	go build -buildmode=c-shared -o $(LIB_NAME)-macos-$(GOHOSTARCH).dylib $(MAIN_PARAMS) $(LIB_MAIN)
+
+lib_linux:
+	export GOTOOLCHAIN=local && \
+	go build -buildmode=c-shared -o $(LIB_NAME)-linux-$(GOHOSTARCH).so $(MAIN_PARAMS) $(LIB_MAIN)
+
+lib_my_windows:
+	export GOTOOLCHAIN=local && \
+	go build -buildmode=c-shared -o $(LIB_NAME)-windows-$(GOHOSTARCH).dll $(MAIN_PARAMS) $(LIB_MAIN)
+
 build_lib_cshared:
 	$(MAKE) build_lib_linux
 	$(MAKE) build_lib_windows
@@ -341,3 +335,6 @@ build_lib_windows:
 build_lib_macos:
 	GOOS=darwin GOARCH=amd64 CGO_ENABLED=1 go build $(PARAMS) -buildmode=c-shared -tags "$(TAGS)" -o sing-box-lib-macos-amd64.dylib ./cmd/libbox_cshared
 	GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 go build $(PARAMS) -buildmode=c-shared -tags "$(TAGS)" -o sing-box-lib-macos-arm64.dylib ./cmd/libbox_cshared
+
+%:
+	@:

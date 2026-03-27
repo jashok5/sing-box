@@ -36,10 +36,6 @@ type PlatformInterface interface {
 
 	UsePlatformNotification() bool
 	SendNotification(notification *Notification) error
-
-	UsePlatformNeighborResolver() bool
-	StartNeighborMonitor(listener NeighborUpdateListener) error
-	CloseNeighborMonitor(listener NeighborUpdateListener) error
 }
 
 type FindConnectionOwnerRequest struct {
