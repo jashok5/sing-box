@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Dreamacro/clash/common/pool"
 	"github.com/Dreamacro/clash/transport/shadowsocks/core"
 )
 
@@ -47,30 +46,34 @@ func (a *authData) next() *authData {
 }
 
 func (a *authData) putAuthData(buf *bytes.Buffer) {
-	binary.Write(buf, binary.LittleEndian, uint32(time.Now().Unix()))
+	var timestampBytes [4]byte
+	binary.LittleEndian.PutUint32(timestampBytes[:], uint32(time.Now().Unix()))
+	buf.Write(timestampBytes[:])
 	buf.Write(a.clientID[:])
-	binary.Write(buf, binary.LittleEndian, a.connectionID)
+	var connectionIDBytes [4]byte
+	binary.LittleEndian.PutUint32(connectionIDBytes[:], a.connectionID)
+	buf.Write(connectionIDBytes[:])
 }
 
 func (a *authData) putEncryptedData(b *bytes.Buffer, userKey []byte, paddings [2]int, salt string) error {
-	encrypt := pool.Get(16)
-	defer pool.Put(encrypt)
-	binary.LittleEndian.PutUint32(encrypt, uint32(time.Now().Unix()))
-	copy(encrypt[4:], a.clientID[:])
-	binary.LittleEndian.PutUint32(encrypt[8:], a.connectionID)
-	binary.LittleEndian.PutUint16(encrypt[12:], uint16(paddings[0]))
-	binary.LittleEndian.PutUint16(encrypt[14:], uint16(paddings[1]))
+	var encrypt [16]byte
+	binary.LittleEndian.PutUint32(encrypt[:4], uint32(time.Now().Unix()))
+	copy(encrypt[4:8], a.clientID[:])
+	binary.LittleEndian.PutUint32(encrypt[8:12], a.connectionID)
+	binary.LittleEndian.PutUint16(encrypt[12:14], uint16(paddings[0]))
+	binary.LittleEndian.PutUint16(encrypt[14:16], uint16(paddings[1]))
 
 	cipherKey := core.Kdf(base64.StdEncoding.EncodeToString(userKey)+salt, 16)
 	block, err := aes.NewCipher(cipherKey)
 	if err != nil {
 		return err
 	}
-	iv := bytes.Repeat([]byte{0}, 16)
-	cbcCipher := cipher.NewCBCEncrypter(block, iv)
+	cbcCipher := cipher.NewCBCEncrypter(block, zeroIV[:])
 
-	cbcCipher.CryptBlocks(encrypt, encrypt)
+	cbcCipher.CryptBlocks(encrypt[:], encrypt[:])
 
-	b.Write(encrypt)
+	b.Write(encrypt[:])
 	return nil
 }
+
+var zeroIV [16]byte

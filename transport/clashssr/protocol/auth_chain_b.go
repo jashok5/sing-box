@@ -48,19 +48,26 @@ func (a *authChainB) StreamConn(c net.Conn, iv []byte) net.Conn {
 }
 
 func (a *authChainB) initDataSize() {
-	a.dataSizeList = a.dataSizeList[:0]
-	a.dataSizeList2 = a.dataSizeList2[:0]
-
 	a.randomServer.InitFromBin(a.Key)
-	length := a.randomServer.Next()%8 + 4
-	for ; length > 0; length-- {
-		a.dataSizeList = append(a.dataSizeList, int(a.randomServer.Next()%2340%2040%1440))
+	length := int(a.randomServer.Next()%8 + 4)
+	if cap(a.dataSizeList) < length {
+		a.dataSizeList = make([]int, length)
+	} else {
+		a.dataSizeList = a.dataSizeList[:length]
+	}
+	for i := 0; i < length; i++ {
+		a.dataSizeList[i] = int(a.randomServer.Next() % 2340 % 2040 % 1440)
 	}
 	sort.Ints(a.dataSizeList)
 
-	length = a.randomServer.Next()%16 + 8
-	for ; length > 0; length-- {
-		a.dataSizeList2 = append(a.dataSizeList2, int(a.randomServer.Next()%2340%2040%1440))
+	length = int(a.randomServer.Next()%16 + 8)
+	if cap(a.dataSizeList2) < length {
+		a.dataSizeList2 = make([]int, length)
+	} else {
+		a.dataSizeList2 = a.dataSizeList2[:length]
+	}
+	for i := 0; i < length; i++ {
+		a.dataSizeList2[i] = int(a.randomServer.Next() % 2340 % 2040 % 1440)
 	}
 	sort.Ints(a.dataSizeList2)
 }
@@ -70,18 +77,20 @@ func (a *authChainB) getRandLength(length int, lashHash []byte, random *tools.Xo
 		return 0
 	}
 	random.InitFromBinAndLength(lashHash, length)
-	pos := sort.Search(len(a.dataSizeList), func(i int) bool { return a.dataSizeList[i] >= length+a.Overhead })
-	finalPos := pos + int(random.Next()%uint64(len(a.dataSizeList)))
-	if finalPos < len(a.dataSizeList) {
+	listLength := len(a.dataSizeList)
+	pos := sort.Search(listLength, func(i int) bool { return a.dataSizeList[i] >= length+a.Overhead })
+	finalPos := pos + int(random.Next()%uint64(listLength))
+	if finalPos < listLength {
 		return a.dataSizeList[finalPos] - length - a.Overhead
 	}
 
-	pos = sort.Search(len(a.dataSizeList2), func(i int) bool { return a.dataSizeList2[i] >= length+a.Overhead })
-	finalPos = pos + int(random.Next()%uint64(len(a.dataSizeList2)))
-	if finalPos < len(a.dataSizeList2) {
+	list2Length := len(a.dataSizeList2)
+	pos = sort.Search(list2Length, func(i int) bool { return a.dataSizeList2[i] >= length+a.Overhead })
+	finalPos = pos + int(random.Next()%uint64(list2Length))
+	if finalPos < list2Length {
 		return a.dataSizeList2[finalPos] - length - a.Overhead
 	}
-	if finalPos < pos+len(a.dataSizeList2)-1 {
+	if finalPos < pos+list2Length-1 {
 		return 0
 	}
 	if length > 1300 {

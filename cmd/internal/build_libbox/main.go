@@ -20,6 +20,7 @@ var (
 	debugEnabled bool
 	target       string
 	platform     string
+	output       string
 	// withTailscale bool
 )
 
@@ -27,6 +28,7 @@ func init() {
 	flag.BoolVar(&debugEnabled, "debug", false, "enable debug")
 	flag.StringVar(&target, "target", "android", "target platform")
 	flag.StringVar(&platform, "platform", "", "specify platform")
+	flag.StringVar(&output, "output", "", "set output file name")
 	// flag.BoolVar(&withTailscale, "with-tailscale", false, "build tailscale for iOS and tvOS")
 }
 
@@ -64,7 +66,7 @@ func init() {
 	debugFlags = append(debugFlags, "-ldflags", "-X github.com/sagernet/sing-box/constant.Version="+currentTag+" -X internal/godebug.defaultGODEBUG=multipathtcp=0 -checklinkname=0")
 
 	// backup(full): sharedTags = append(sharedTags, "with_gvisor", "with_quic", "with_wireguard", "with_utls", "with_naive_outbound", "with_clash_api", "badlinkname", "tfogo_checklinkname0", "with_shadowsocksr")
-	sharedTags = append(sharedTags, "with_gvisor", "with_quic", "with_wireguard", "with_utls", "with_clash_api", "badlinkname", "tfogo_checklinkname0", "with_shadowsocksr")
+	sharedTags = append(sharedTags, "with_gvisor", "with_quic", "with_utls", "with_clash_api", "badlinkname", "tfogo_checklinkname0", "with_shadowsocksr")
 	darwinTags = append(darwinTags, "with_dhcp", "grpcnotrace")
 	// backup(full): sharedTags = append(sharedTags, "with_tailscale", "ts_omit_logtail", "ts_omit_ssh", "ts_omit_drive", "ts_omit_taildrop", "ts_omit_webclient", "ts_omit_doctor", "ts_omit_capture", "ts_omit_kube", "ts_omit_aws", "ts_omit_synology", "ts_omit_bird")
 	// memcTags = append(memcTags, "with_tailscale")
@@ -190,6 +192,11 @@ func buildAndroid() {
 }
 
 func buildApple() {
+	outputName := "Libbox.xcframework"
+	if output != "" {
+		outputName = output
+	}
+
 	var bindTarget string
 	if platform != "" {
 		bindTarget = platform
@@ -202,6 +209,7 @@ func buildApple() {
 	args := []string{
 		"bind",
 		"-v",
+		"-o", outputName,
 		"-target", bindTarget,
 		"-libname=box",
 		"-tags-not-macos=with_low_memory",
@@ -235,12 +243,14 @@ func buildApple() {
 		log.Fatal(err)
 	}
 
-	copyPath := filepath.Join("..", "sing-box-for-apple")
-	if rw.IsDir(copyPath) {
-		targetDir := filepath.Join(copyPath, "Libbox.xcframework")
-		targetDir, _ = filepath.Abs(targetDir)
-		os.RemoveAll(targetDir)
-		os.Rename("Libbox.xcframework", targetDir)
-		log.Info("copied to ", targetDir)
+	if output == "" {
+		copyPath := filepath.Join("..", "sing-box-for-apple")
+		if rw.IsDir(copyPath) {
+			targetDir := filepath.Join(copyPath, outputName)
+			targetDir, _ = filepath.Abs(targetDir)
+			os.RemoveAll(targetDir)
+			os.Rename(outputName, targetDir)
+			log.Info("copied to ", targetDir)
+		}
 	}
 }

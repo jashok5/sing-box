@@ -243,6 +243,11 @@ lib_android:
 lib_apple:
 	go run ./cmd/internal/build_libbox -target apple
 
+lib_macos:
+	rm -rf Libbox.xcframework
+	rm -rf build/macos build/macos-arm64 build/macos-amd64 build/macos-x86_64
+	go run ./cmd/internal/build_libbox -target apple -platform macos -output Libbox.xcframework
+
 lib_windows:
 	$(SING_FFI) generate --config $(LIBBOX_FFI_CONFIG) --platform-type csharp
 

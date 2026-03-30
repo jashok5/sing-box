@@ -22,14 +22,19 @@ type authSHA1V4 struct {
 	iv            []byte
 	hasSentHeader bool
 	rawTrans      bool
+	crcSaltKey    []byte
 }
 
 func newAuthSHA1V4(b *Base) Protocol {
-	return &authSHA1V4{Base: b, authData: &authData{}}
+	protocol := &authSHA1V4{Base: b, authData: &authData{}}
+	protocol.crcSaltKey = make([]byte, len(authSHA1V4Salt)+len(b.Key))
+	copy(protocol.crcSaltKey, authSHA1V4Salt)
+	copy(protocol.crcSaltKey[len(authSHA1V4Salt):], b.Key)
+	return protocol
 }
 
 func (a *authSHA1V4) StreamConn(c net.Conn, iv []byte) net.Conn {
-	p := &authSHA1V4{Base: a.Base, authData: a.next()}
+	p := &authSHA1V4{Base: a.Base, authData: a.next(), crcSaltKey: a.crcSaltKey}
 	p.iv = iv
 	return &Conn{Conn: c, Protocol: p}
 }
@@ -44,34 +49,35 @@ func (a *authSHA1V4) Decode(dst, src *bytes.Buffer) error {
 		return nil
 	}
 	for src.Len() > 4 {
-		if uint16(crc32.ChecksumIEEE(src.Bytes()[:2])&0xffff) != binary.LittleEndian.Uint16(src.Bytes()[2:4]) {
+		raw := src.Bytes()
+		if uint16(crc32.ChecksumIEEE(raw[:2])&0xffff) != binary.LittleEndian.Uint16(raw[2:4]) {
 			src.Reset()
 			return errAuthSHA1V4CRC32Error
 		}
 
-		length := int(binary.BigEndian.Uint16(src.Bytes()[:2]))
+		length := int(binary.BigEndian.Uint16(raw[:2]))
 		if length >= 8192 || length < 7 {
 			a.rawTrans = true
 			src.Reset()
 			return errAuthSHA1V4LengthError
 		}
-		if length > src.Len() {
+		if length > len(raw) {
 			break
 		}
 
-		if adler32.Checksum(src.Bytes()[:length-4]) != binary.LittleEndian.Uint32(src.Bytes()[length-4:length]) {
+		if adler32.Checksum(raw[:length-4]) != binary.LittleEndian.Uint32(raw[length-4:length]) {
 			a.rawTrans = true
 			src.Reset()
 			return errAuthSHA1V4Adler32Error
 		}
 
-		pos := int(src.Bytes()[4])
+		pos := int(raw[4])
 		if pos < 255 {
 			pos += 4
 		} else {
-			pos = int(binary.BigEndian.Uint16(src.Bytes()[5:7])) + 4
+			pos = int(binary.BigEndian.Uint16(raw[5:7])) + 4
 		}
-		dst.Write(src.Bytes()[pos : length-4])
+		dst.Write(raw[pos : length-4])
 		src.Next(length)
 	}
 	return nil
@@ -118,11 +124,17 @@ func (a *authSHA1V4) packData(poolBuf *bytes.Buffer, data []byte) {
 		packedDataLength -= 2
 	}
 
-	binary.Write(poolBuf, binary.BigEndian, uint16(packedDataLength))
-	binary.Write(poolBuf, binary.LittleEndian, uint16(crc32.ChecksumIEEE(poolBuf.Bytes()[poolBuf.Len()-2:])&0xffff))
+	var lengthBytes [2]byte
+	binary.BigEndian.PutUint16(lengthBytes[:], uint16(packedDataLength))
+	poolBuf.Write(lengthBytes[:])
+	var crc16Bytes [2]byte
+	binary.LittleEndian.PutUint16(crc16Bytes[:], uint16(crc32.ChecksumIEEE(lengthBytes[:])&0xffff))
+	poolBuf.Write(crc16Bytes[:])
 	a.packRandData(poolBuf, randDataLength)
 	poolBuf.Write(data)
-	binary.Write(poolBuf, binary.LittleEndian, adler32.Checksum(poolBuf.Bytes()[poolBuf.Len()-packedDataLength+4:]))
+	var adlerBytes [4]byte
+	binary.LittleEndian.PutUint32(adlerBytes[:], adler32.Checksum(poolBuf.Bytes()[poolBuf.Len()-packedDataLength+4:]))
+	poolBuf.Write(adlerBytes[:])
 }
 
 func (a *authSHA1V4) packAuthData(poolBuf *bytes.Buffer, data []byte) {
@@ -140,12 +152,10 @@ func (a *authSHA1V4) packAuthData(poolBuf *bytes.Buffer, data []byte) {
 		packedAuthDataLength -= 2
 	}
 
-	salt := []byte("auth_sha1_v4")
-	crcData := pool.Get(len(salt) + len(a.Key) + 2)
+	crcData := pool.Get(len(a.crcSaltKey) + 2)
 	defer pool.Put(crcData)
 	binary.BigEndian.PutUint16(crcData, uint16(packedAuthDataLength))
-	copy(crcData[2:], salt)
-	copy(crcData[2+len(salt):], a.Key)
+	copy(crcData[2:], a.crcSaltKey)
 
 	key := pool.Get(len(a.iv) + len(a.Key))
 	defer pool.Put(key)
@@ -153,7 +163,9 @@ func (a *authSHA1V4) packAuthData(poolBuf *bytes.Buffer, data []byte) {
 	copy(key[len(a.iv):], a.Key)
 
 	poolBuf.Write(crcData[:2])
-	binary.Write(poolBuf, binary.LittleEndian, crc32.ChecksumIEEE(crcData))
+	var crc32Bytes [4]byte
+	binary.LittleEndian.PutUint32(crc32Bytes[:], crc32.ChecksumIEEE(crcData))
+	poolBuf.Write(crc32Bytes[:])
 	a.packRandData(poolBuf, randDataLength)
 	a.putAuthData(poolBuf)
 	poolBuf.Write(data)
@@ -167,9 +179,13 @@ func (a *authSHA1V4) packRandData(poolBuf *bytes.Buffer, size int) {
 		return
 	}
 	poolBuf.WriteByte(255)
-	binary.Write(poolBuf, binary.BigEndian, uint16(size+3))
+	var sizeBytes [2]byte
+	binary.BigEndian.PutUint16(sizeBytes[:], uint16(size+3))
+	poolBuf.Write(sizeBytes[:])
 	tools.AppendRandBytes(poolBuf, size)
 }
+
+var authSHA1V4Salt = []byte("auth_sha1_v4")
 
 func (a *authSHA1V4) getRandDataLength(size int) int {
 	if size > 1200 {

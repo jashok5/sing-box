@@ -3,12 +3,17 @@ package obfs
 import (
 	"crypto/rand"
 	"encoding/binary"
+	"errors"
 	"hash/crc32"
 	mrand "math/rand"
 	"net"
 
 	"github.com/Dreamacro/clash/common/pool"
 )
+
+const maxRandomHeadPendingBuffer = 256 * 1024
+
+var errRandomHeadBufferOverflow = errors.New("random_head buffered data too large before handshake")
 
 func init() {
 	register("random_head", newRandomHead, 0)
@@ -41,17 +46,37 @@ func (c *randomHeadConn) Read(b []byte) (int, error) {
 	}
 	buf := pool.Get(pool.RelayBufferSize)
 	defer pool.Put(buf)
-	c.Conn.Read(buf)
+	_, err := c.Conn.Read(buf)
+	if err != nil {
+		return 0, err
+	}
 	c.rawTransRecv = true
-	c.Write(nil)
-	return 0, nil
+	if _, err = c.Write(nil); err != nil {
+		return 0, err
+	}
+	return c.Conn.Read(b)
 }
 
 func (c *randomHeadConn) Write(b []byte) (int, error) {
 	if c.rawTransSent {
 		return c.Conn.Write(b)
 	}
-	c.buf = append(c.buf, b...)
+	if len(b) > 0 {
+		currentLength := len(c.buf)
+		if currentLength+len(b) > maxRandomHeadPendingBuffer {
+			return 0, errRandomHeadBufferOverflow
+		}
+		if cap(c.buf) < currentLength+len(b) {
+			reserve := currentLength + len(b)
+			if reserve < 4096 {
+				reserve = 4096
+			}
+			next := make([]byte, currentLength, reserve)
+			copy(next, c.buf)
+			c.buf = next
+		}
+		c.buf = append(c.buf, b...)
+	}
 	if !c.hasSentHeader {
 		c.hasSentHeader = true
 		dataLength := mrand.Intn(96) + 4

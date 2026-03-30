@@ -94,40 +94,47 @@ func (a *authAES128) Decode(dst, src *bytes.Buffer) error {
 		return nil
 	}
 	for src.Len() > 4 {
+		raw := src.Bytes()
 		macKey := pool.Get(len(a.userKey) + 4)
-		defer pool.Put(macKey)
 		copy(macKey, a.userKey)
 		binary.LittleEndian.PutUint32(macKey[len(a.userKey):], a.recvID)
-		if !bytes.Equal(a.hmac(macKey, src.Bytes()[:2])[:2], src.Bytes()[2:4]) {
+		macLength := a.hmac(macKey, raw[:2])
+		if macLength[0] != raw[2] || macLength[1] != raw[3] {
+			pool.Put(macKey)
 			src.Reset()
 			return errAuthAES128MACError
 		}
 
-		length := int(binary.LittleEndian.Uint16(src.Bytes()[:2]))
+		length := int(binary.LittleEndian.Uint16(raw[:2]))
 		if length >= 8192 || length < 7 {
+			pool.Put(macKey)
 			a.rawTrans = true
 			src.Reset()
 			return errAuthAES128LengthError
 		}
-		if length > src.Len() {
+		if length > len(raw) {
+			pool.Put(macKey)
 			break
 		}
 
-		if !bytes.Equal(a.hmac(macKey, src.Bytes()[:length-4])[:4], src.Bytes()[length-4:length]) {
+		macContent := a.hmac(macKey, raw[:length-4])
+		if macContent[0] != raw[length-4] || macContent[1] != raw[length-3] || macContent[2] != raw[length-2] || macContent[3] != raw[length-1] {
+			pool.Put(macKey)
 			a.rawTrans = true
 			src.Reset()
 			return errAuthAES128ChksumError
 		}
+		pool.Put(macKey)
 
 		a.recvID++
 
-		pos := int(src.Bytes()[4])
+		pos := int(raw[4])
 		if pos < 255 {
 			pos += 4
 		} else {
-			pos = int(binary.LittleEndian.Uint16(src.Bytes()[5:7])) + 4
+			pos = int(binary.LittleEndian.Uint16(raw[5:7])) + 4
 		}
-		dst.Write(src.Bytes()[pos : length-4])
+		dst.Write(raw[pos : length-4])
 		src.Next(length)
 	}
 	return nil
@@ -188,7 +195,9 @@ func (a *authAES128) packData(poolBuf *bytes.Buffer, data []byte, fullDataLength
 	binary.LittleEndian.PutUint32(macKey[len(a.userKey):], a.packID)
 	a.packID++
 
-	binary.Write(poolBuf, binary.LittleEndian, uint16(packedDataLength))
+	var packedLengthBytes [2]byte
+	binary.LittleEndian.PutUint16(packedLengthBytes[:], uint16(packedDataLength))
+	poolBuf.Write(packedLengthBytes[:])
 	poolBuf.Write(a.hmac(macKey, poolBuf.Bytes()[poolBuf.Len()-2:])[:2])
 	a.packRandData(poolBuf, randDataLength)
 	poolBuf.Write(data)
@@ -273,6 +282,8 @@ func (a *authAES128) packRandData(poolBuf *bytes.Buffer, size int) {
 		return
 	}
 	poolBuf.WriteByte(255)
-	binary.Write(poolBuf, binary.LittleEndian, uint16(size+3))
+	var sizeBytes [2]byte
+	binary.LittleEndian.PutUint16(sizeBytes[:], uint16(size+3))
+	poolBuf.Write(sizeBytes[:])
 	tools.AppendRandBytes(poolBuf, size)
 }

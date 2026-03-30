@@ -12,6 +12,10 @@ type PacketConn struct {
 }
 
 func (c *PacketConn) WriteTo(b []byte, addr net.Addr) (int, error) {
+	bLength := len(b)
+	if bLength == 0 {
+		return 0, nil
+	}
 	buf := pool.GetBuffer()
 	defer pool.PutBuffer(buf)
 	err := c.EncodePacket(buf, b)
@@ -19,7 +23,7 @@ func (c *PacketConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 		return 0, err
 	}
 	_, err = c.PacketConn.WriteTo(buf.Bytes(), addr)
-	return len(b), err
+	return bLength, err
 }
 
 func (c *PacketConn) ReadFrom(b []byte) (int, net.Addr, error) {

@@ -2,7 +2,6 @@ package obfs
 
 import (
 	"bytes"
-	"encoding/hex"
 	"io"
 	"math/rand"
 	"net"
@@ -18,11 +17,14 @@ func init() {
 
 type httpObfs struct {
 	*Base
-	post bool
+	post           bool
+	hostCandidates []string
+	bodyHeader     string
 }
 
 func newHTTPSimple(b *Base) Obfs {
-	return &httpObfs{Base: b}
+	hostCandidates, bodyHeader := parseHTTPObfsParam(b)
+	return &httpObfs{Base: b, hostCandidates: hostCandidates, bodyHeader: bodyHeader}
 }
 
 type httpConn struct {
@@ -58,7 +60,7 @@ func (c *httpConn) Read(b []byte) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	pos := bytes.Index(buf[:n], []byte("\r\n\r\n"))
+	pos := bytes.Index(buf[:n], httpHeaderEnd)
 	if pos == -1 {
 		return 0, io.EOF
 	}
@@ -86,20 +88,7 @@ func (c *httpConn) Write(b []byte) (int, error) {
 	headData := b[:headDataLength]
 	b = b[headDataLength:]
 
-	var body string
-	host := c.Host
-	if len(c.Param) > 0 {
-		pos := strings.Index(c.Param, "#")
-		if pos != -1 {
-			body = strings.ReplaceAll(c.Param[pos+1:], "\n", "\r\n")
-			body = strings.ReplaceAll(body, "\\n", "\r\n")
-			host = c.Param[:pos]
-		} else {
-			host = c.Param
-		}
-	}
-	hosts := strings.Split(host, ",")
-	host = hosts[rand.Intn(len(hosts))]
+	host := c.hostCandidates[rand.Intn(len(c.hostCandidates))]
 
 	buf := pool.GetBuffer()
 	defer pool.PutBuffer(buf)
@@ -114,8 +103,9 @@ func (c *httpConn) Write(b []byte) (int, error) {
 		buf.WriteString(":" + strconv.Itoa(c.Port))
 	}
 	buf.WriteString("\r\n")
-	if len(body) > 0 {
-		buf.WriteString(body + "\r\n\r\n")
+	if c.bodyHeader != "" {
+		buf.WriteString(c.bodyHeader)
+		buf.WriteString("\r\n\r\n")
 	} else {
 		buf.WriteString("User-Agent: ")
 		buf.WriteString(userAgent[rand.Intn(len(userAgent))])
@@ -128,24 +118,24 @@ func (c *httpConn) Write(b []byte) (int, error) {
 	buf.Write(b)
 	_, err := c.Conn.Write(buf.Bytes())
 	if err != nil {
-		return 0, nil
+		return 0, err
 	}
 	c.hasSentHeader = true
 	return bLength, nil
 }
 
 func packURLEncodedHeadData(buf *bytes.Buffer, data []byte) {
-	dataLength := len(data)
-	for i := 0; i < dataLength; i++ {
-		buf.WriteRune('%')
-		buf.WriteString(hex.EncodeToString(data[i : i+1]))
+	for _, value := range data {
+		buf.WriteByte('%')
+		buf.WriteByte(hexLower[value>>4])
+		buf.WriteByte(hexLower[value&0x0f])
 	}
 }
 
 func packBoundary(buf *bytes.Buffer) {
 	buf.WriteString("Content-Type: multipart/form-data; boundary=")
 	set := "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-	for i := 0; i < 32; i++ {
+	for range 32 {
 		buf.WriteByte(set[rand.Intn(62)])
 	}
 	buf.WriteString("\r\n")
@@ -402,4 +392,33 @@ var userAgent = []string{
 	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2272.101 Safari/537.36",
 	"Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.67 Safari/537.36",
 	"Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/68.0.3440.106 Safari/537.36",
+}
+
+var httpHeaderEnd = []byte("\r\n\r\n")
+var hexLower = []byte("0123456789abcdef")
+
+func parseHTTPObfsParam(b *Base) ([]string, string) {
+	host := strings.TrimSpace(b.Host)
+	bodyHeader := ""
+	if b.Param != "" {
+		if pos := strings.Index(b.Param, "#"); pos != -1 {
+			bodyHeader = strings.ReplaceAll(b.Param[pos+1:], "\n", "\r\n")
+			bodyHeader = strings.ReplaceAll(bodyHeader, "\\n", "\r\n")
+			host = strings.TrimSpace(b.Param[:pos])
+		} else {
+			host = strings.TrimSpace(b.Param)
+		}
+	}
+	parts := strings.Split(host, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		candidate := strings.TrimSpace(part)
+		if candidate != "" {
+			result = append(result, candidate)
+		}
+	}
+	if len(result) == 0 {
+		result = []string{b.Host}
+	}
+	return result, bodyHeader
 }

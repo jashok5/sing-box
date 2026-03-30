@@ -21,6 +21,7 @@ import (
 	N "github.com/sagernet/sing/common/network"
 
 	"github.com/Dreamacro/clash/transport/shadowsocks/core"
+	"github.com/Dreamacro/clash/transport/shadowsocks/shadowaead"
 	"github.com/Dreamacro/clash/transport/shadowsocks/shadowstream"
 	"github.com/Dreamacro/clash/transport/socks5"
 )
@@ -40,7 +41,6 @@ type Outbound struct {
 }
 
 func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.ShadowsocksROutboundOptions) (adapter.Outbound, error) {
-	// logger.Warn("ShadowsocksR is deprecated, see https://sing-box.sagernet.org/deprecated")
 	outboundDialer, err := dialer.New(ctx, options.DialerOptions, options.ServerIsDomain())
 	if err != nil {
 		return nil, err
@@ -51,7 +51,6 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 		dialer:     outboundDialer,
 		serverAddr: options.ServerOptions.Build(),
 	}
-	// 根据加密方法选择加密算法
 	var cipher string
 	switch options.Method {
 	case "none":
@@ -59,12 +58,10 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 	default:
 		cipher = options.Method
 	}
-	// 选择加密算法
 	outbound.cipher, err = core.PickCipher(cipher, nil, options.Password)
 	if err != nil {
 		return nil, err
 	}
-	// 根据加密算法选择IV大小和密钥
 	var (
 		ivSize int
 		key    []byte
@@ -80,7 +77,6 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 		ivSize = streamCipher.IVSize()
 		key = streamCipher.Key
 	}
-	// 选择混淆算法
 	obfs, obfsOverhead, err := obfs.PickObfs(options.Obfs, &obfs.Base{
 		Host:   options.Server,
 		Port:   int(options.ServerPort),
@@ -91,7 +87,6 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 	if err != nil {
 		return nil, E.Cause(err, "initialize obfs")
 	}
-	// 选择协议
 	protocol, err := protocol.PickProtocol(options.Protocol, &protocol.Base{
 		Key:      key,
 		Overhead: obfsOverhead,
@@ -109,7 +104,7 @@ func (h *Outbound) DialContext(ctx context.Context, network string, destination 
 	ctx, metadata := adapter.ExtendContext(ctx)
 	metadata.Outbound = h.Tag()
 	metadata.Destination = destination
-	switch network {
+	switch N.NetworkName(network) {
 	case N.NetworkTCP:
 		h.logger.InfoContext(ctx, "outbound connection to ", destination)
 		conn, err := h.dialer.DialContext(ctx, network, h.serverAddr)
@@ -117,12 +112,19 @@ func (h *Outbound) DialContext(ctx context.Context, network string, destination 
 			return nil, err
 		}
 		conn = h.cipher.StreamConn(h.obfs.StreamConn(conn))
-		writeIv, err := conn.(*shadowstream.Conn).ObtainWriteIV()
-		if err != nil {
+		var writeIV []byte
+		switch streamConn := conn.(type) {
+		case *shadowstream.Conn:
+			writeIV, err = streamConn.ObtainWriteIV()
+			if err != nil {
+				conn.Close()
+				return nil, err
+			}
+		case *shadowaead.Conn:
 			conn.Close()
-			return nil, err
+			return nil, E.New("invalid ssr cipher connection type")
 		}
-		conn = h.protocol.StreamConn(conn, writeIv)
+		conn = h.protocol.StreamConn(conn, writeIV)
 		err = M.SocksaddrSerializer.WriteAddrPort(conn, destination)
 		if err != nil {
 			conn.Close()
@@ -154,14 +156,6 @@ func (h *Outbound) ListenPacket(ctx context.Context, destination M.Socksaddr) (n
 	packetConn = &ssPacketConn{packetConn, outConn.RemoteAddr()}
 	return packetConn, nil
 }
-
-//func (h *ShadowsocksR) NewConnection(ctx context.Context, conn net.Conn, metadata adapter.InboundContext) error {
-//	return NewConnection(ctx, h, conn, metadata)
-//}
-//
-//func (h *ShadowsocksR) NewPacketConnection(ctx context.Context, conn N.PacketConn, metadata adapter.InboundContext) error {
-//	return NewPacketConnection(ctx, h, conn, metadata)
-//}
 
 type ssPacketConn struct {
 	net.PacketConn

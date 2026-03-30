@@ -5,5 +5,6 @@ func init() {
 }
 
 func newHTTPPost(b *Base) Obfs {
-	return &httpObfs{Base: b, post: true}
+	hostCandidates, bodyHeader := parseHTTPObfsParam(b)
+	return &httpObfs{Base: b, post: true, hostCandidates: hostCandidates, bodyHeader: bodyHeader}
 }

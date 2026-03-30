@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"encoding/binary"
+	"errors"
 	mrand "math/rand"
 	"net"
 	"strings"
@@ -14,6 +15,10 @@ import (
 	"github.com/Dreamacro/clash/transport/ssr/tools"
 )
 
+const maxTLS12TicketPendingBuffer = 512 * 1024
+
+var errTLS12TicketAuthPendingBufferOverflow = errors.New("tls1.2_ticket_auth buffered data too large before handshake")
+
 func init() {
 	register("tls1.2_ticket_auth", newTLS12Ticket, 5)
 	register("tls1.2_ticket_fastauth", newTLS12Ticket, 5)
@@ -22,11 +27,17 @@ func init() {
 type tls12Ticket struct {
 	*Base
 	*authData
+	hosts   []string
+	hmacKey []byte
 }
 
 func newTLS12Ticket(b *Base) Obfs {
 	r := &tls12Ticket{Base: b, authData: &authData{}}
 	rand.Read(r.clientID[:])
+	r.hosts = buildTLSHosts(b)
+	r.hmacKey = make([]byte, len(b.Key)+len(r.clientID))
+	copy(r.hmacKey, b.Key)
+	copy(r.hmacKey[len(b.Key):], r.clientID[:])
 	return r
 }
 
@@ -58,11 +69,12 @@ func (c *tls12TicketConn) Read(b []byte) (int, error) {
 	if c.handshakeStatus == 8 {
 		c.underDecoded.Write(buf[:n])
 		for c.underDecoded.Len() > 5 {
-			if !bytes.Equal(c.underDecoded.Bytes()[:3], []byte{0x17, 3, 3}) {
+			raw := c.underDecoded.Bytes()
+			if raw[0] != 0x17 || raw[1] != 0x03 || raw[2] != 0x03 {
 				c.underDecoded.Reset()
 				return 0, errTLS12TicketAuthIncorrectMagicNumber
 			}
-			size := int(binary.BigEndian.Uint16(c.underDecoded.Bytes()[3:5]))
+			size := int(binary.BigEndian.Uint16(raw[3:5]))
 			if c.underDecoded.Len() < 5+size {
 				break
 			}
@@ -81,8 +93,10 @@ func (c *tls12TicketConn) Read(b []byte) (int, error) {
 		return 0, errTLS12TicketAuthHMACError
 	}
 
-	c.Write(nil)
-	return 0, nil
+	if _, err = c.Write(nil); err != nil {
+		return 0, err
+	}
+	return c.Read(b)
 }
 
 func (c *tls12TicketConn) Write(b []byte) (int, error) {
@@ -91,10 +105,7 @@ func (c *tls12TicketConn) Write(b []byte) (int, error) {
 		buf := pool.GetBuffer()
 		defer pool.PutBuffer(buf)
 		for len(b) > 2048 {
-			size := mrand.Intn(4096) + 100
-			if len(b) < size {
-				size = len(b)
-			}
+			size := min(len(b), mrand.Intn(4096)+100)
 			packData(buf, b[:size])
 			b = b[size:]
 		}
@@ -109,6 +120,9 @@ func (c *tls12TicketConn) Write(b []byte) (int, error) {
 	}
 
 	if len(b) > 0 {
+		if c.sendBuf.Len()+len(b) > maxTLS12TicketPendingBuffer {
+			return 0, errTLS12TicketAuthPendingBufferOverflow
+		}
 		packData(&c.sendBuf, b)
 	}
 
@@ -165,6 +179,7 @@ func (c *tls12TicketConn) Write(b []byte) (int, error) {
 		tools.AppendRandBytes(buf, 22)
 		buf.Write(c.hmacSHA1(buf.Bytes())[:10])
 		buf.ReadFrom(&c.sendBuf)
+		c.sendBuf = bytes.Buffer{}
 
 		c.handshakeStatus = 8
 
@@ -175,8 +190,12 @@ func (c *tls12TicketConn) Write(b []byte) (int, error) {
 }
 
 func packData(buf *bytes.Buffer, data []byte) {
-	buf.Write([]byte{0x17, 3, 3})
-	binary.Write(buf, binary.BigEndian, uint16(len(data)))
+	buf.WriteByte(0x17)
+	buf.WriteByte(0x03)
+	buf.WriteByte(0x03)
+	var lengthBytes [2]byte
+	binary.BigEndian.PutUint16(lengthBytes[:], uint16(len(data)))
+	buf.Write(lengthBytes[:])
 	buf.Write(data)
 }
 
@@ -204,24 +223,35 @@ func (c *tls12TicketConn) packTicketBuf(buf *bytes.Buffer, u string) {
 }
 
 func (t *tls12Ticket) hmacSHA1(data []byte) []byte {
-	key := pool.Get(len(t.Key) + 32)
-	defer pool.Put(key)
-	copy(key, t.Key)
-	copy(key[len(t.Key):], t.clientID[:])
-
-	sha1Data := tools.HmacSHA1(key, data)
+	sha1Data := tools.HmacSHA1(t.hmacKey, data)
 	return sha1Data[:10]
 }
 
 func (t *tls12Ticket) getHost() string {
-	host := t.Param
-	if len(host) == 0 {
-		host = t.Host
+	return t.hosts[mrand.Intn(len(t.hosts))]
+}
+
+func buildTLSHosts(b *Base) []string {
+	host := b.Param
+	if host == "" {
+		host = b.Host
 	}
-	if len(host) > 0 && host[len(host)-1] >= '0' && host[len(host)-1] <= '9' {
-		host = ""
+	if len(host) > 0 {
+		last := host[len(host)-1]
+		if last >= '0' && last <= '9' {
+			host = ""
+		}
 	}
-	hosts := strings.Split(host, ",")
-	host = hosts[mrand.Intn(len(hosts))]
-	return host
+	parts := strings.Split(host, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		candidate := strings.TrimSpace(part)
+		if candidate != "" {
+			result = append(result, candidate)
+		}
+	}
+	if len(result) == 0 {
+		return []string{""}
+	}
+	return result
 }
