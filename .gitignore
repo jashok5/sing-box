@@ -29,8 +29,8 @@ AGENTS.md
 /sing-box_windows_arm64.exe
 /sing-box-lib-linux-amd64.so
 /sing-box-lib-linux-arm64.so
-/sing-box-lib-windows-amd64.dll
-/sing-box-lib-windows-arm64.dll
+/sing-box-amd64.dll
+/sing-box-arm64.dll
 /sing-box-lib-darwin-amd64.dylib
 /sing-box-lib-darwin-arm64.dylib
 /sing-box-lib-macos-amd64.dylib
