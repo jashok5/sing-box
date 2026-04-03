@@ -14,7 +14,7 @@ import (
 
 	box "github.com/sagernet/sing-box"
 	lb "github.com/sagernet/sing-box/experimental/libbox"
-	_ "github.com/sagernet/sing-box/include"
+	"github.com/sagernet/sing-box/include"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing/common/json"
 )
@@ -92,13 +92,14 @@ func libbox_run(configContent *C.char) *C.char {
 	}
 
 	configStr := C.GoString(configContent)
-	var options option.Options
-	err := json.Unmarshal([]byte(configStr), &options)
+	ctx := include.Context(context.Background())
+	options, err := json.UnmarshalExtendedContext[option.Options](ctx, []byte(configStr))
 	if err != nil {
 		return C.CString(err.Error())
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	var cancel context.CancelFunc
+	ctx, cancel = context.WithCancel(ctx)
 	instance, err = box.New(box.Options{
 		Context: ctx,
 		Options: options,
