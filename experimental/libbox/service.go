@@ -24,6 +24,10 @@ import (
 
 var _ adapter.PlatformInterface = (*platformInterfaceWrapper)(nil)
 
+type platformInterfaceOptOut interface {
+	DisablePlatformInterface() bool
+}
+
 type platformInterfaceWrapper struct {
 	iif                    PlatformInterface
 	useProcFS              bool
@@ -33,6 +37,14 @@ type platformInterfaceWrapper struct {
 	defaultInterface       *control.Interface
 	isExpensive            bool
 	isConstrained          bool
+}
+
+func (w *platformInterfaceWrapper) useLibboxPlatformInterface() bool {
+	optOut, isOptOut := w.iif.(platformInterfaceOptOut)
+	if isOptOut && optOut.DisablePlatformInterface() {
+		return false
+	}
+	return true
 }
 
 func (w *platformInterfaceWrapper) Initialize(networkManager adapter.NetworkManager) error {
@@ -49,7 +61,7 @@ func (w *platformInterfaceWrapper) AutoDetectInterfaceControl(fd int) error {
 }
 
 func (w *platformInterfaceWrapper) UsePlatformInterface() bool {
-	return runtime.GOOS != "windows"
+	return w.useLibboxPlatformInterface()
 }
 
 func (w *platformInterfaceWrapper) OpenInterface(options *tun.Options, platformOptions option.TunPlatformOptions) (tun.Tun, error) {
@@ -82,7 +94,7 @@ func (w *platformInterfaceWrapper) OpenInterface(options *tun.Options, platformO
 }
 
 func (w *platformInterfaceWrapper) UsePlatformDefaultInterfaceMonitor() bool {
-	return runtime.GOOS != "windows"
+	return w.useLibboxPlatformInterface()
 }
 
 func (w *platformInterfaceWrapper) CreateDefaultInterfaceMonitor(logger logger.Logger) tun.DefaultInterfaceMonitor {
@@ -93,7 +105,7 @@ func (w *platformInterfaceWrapper) CreateDefaultInterfaceMonitor(logger logger.L
 }
 
 func (w *platformInterfaceWrapper) UsePlatformNetworkInterfaces() bool {
-	return runtime.GOOS != "windows"
+	return w.useLibboxPlatformInterface()
 }
 
 func (w *platformInterfaceWrapper) NetworkInterfaces() ([]adapter.NetworkInterface, error) {
@@ -149,7 +161,7 @@ func (w *platformInterfaceWrapper) RequestPermissionForWIFIState() error {
 }
 
 func (w *platformInterfaceWrapper) UsePlatformWIFIMonitor() bool {
-	return runtime.GOOS != "windows"
+	return w.useLibboxPlatformInterface()
 }
 
 func (w *platformInterfaceWrapper) ReadWIFIState() adapter.WIFIState {
@@ -165,7 +177,7 @@ func (w *platformInterfaceWrapper) SystemCertificates() []string {
 }
 
 func (w *platformInterfaceWrapper) UsePlatformConnectionOwnerFinder() bool {
-	return runtime.GOOS != "windows"
+	return w.useLibboxPlatformInterface()
 }
 
 func (w *platformInterfaceWrapper) FindConnectionOwner(request *adapter.FindConnectionOwnerRequest) (*adapter.ConnectionOwner, error) {
@@ -213,7 +225,7 @@ func (w *platformInterfaceWrapper) DisableColors() bool {
 }
 
 func (w *platformInterfaceWrapper) UsePlatformNotification() bool {
-	return runtime.GOOS != "windows"
+	return w.useLibboxPlatformInterface()
 }
 
 func (w *platformInterfaceWrapper) SendNotification(notification *adapter.Notification) error {

@@ -8,6 +8,7 @@ import (
 	stdjson "encoding/json"
 	"errors"
 	"os"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -109,6 +110,10 @@ func (p *csharedPlatformInterface) ClearDNSCache() {
 
 func (p *csharedPlatformInterface) SendNotification(notification *lb.Notification) error {
 	return nil
+}
+
+func (p *csharedPlatformInterface) DisablePlatformInterface() bool {
+	return runtime.GOOS == "windows"
 }
 
 type csharedCommandServerHandler struct{}
