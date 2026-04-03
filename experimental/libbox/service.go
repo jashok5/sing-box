@@ -49,7 +49,7 @@ func (w *platformInterfaceWrapper) AutoDetectInterfaceControl(fd int) error {
 }
 
 func (w *platformInterfaceWrapper) UsePlatformInterface() bool {
-	return true
+	return runtime.GOOS != "windows"
 }
 
 func (w *platformInterfaceWrapper) OpenInterface(options *tun.Options, platformOptions option.TunPlatformOptions) (tun.Tun, error) {
@@ -82,7 +82,7 @@ func (w *platformInterfaceWrapper) OpenInterface(options *tun.Options, platformO
 }
 
 func (w *platformInterfaceWrapper) UsePlatformDefaultInterfaceMonitor() bool {
-	return true
+	return runtime.GOOS != "windows"
 }
 
 func (w *platformInterfaceWrapper) CreateDefaultInterfaceMonitor(logger logger.Logger) tun.DefaultInterfaceMonitor {
@@ -93,7 +93,7 @@ func (w *platformInterfaceWrapper) CreateDefaultInterfaceMonitor(logger logger.L
 }
 
 func (w *platformInterfaceWrapper) UsePlatformNetworkInterfaces() bool {
-	return true
+	return runtime.GOOS != "windows"
 }
 
 func (w *platformInterfaceWrapper) NetworkInterfaces() ([]adapter.NetworkInterface, error) {
@@ -149,7 +149,7 @@ func (w *platformInterfaceWrapper) RequestPermissionForWIFIState() error {
 }
 
 func (w *platformInterfaceWrapper) UsePlatformWIFIMonitor() bool {
-	return true
+	return runtime.GOOS != "windows"
 }
 
 func (w *platformInterfaceWrapper) ReadWIFIState() adapter.WIFIState {
@@ -165,7 +165,7 @@ func (w *platformInterfaceWrapper) SystemCertificates() []string {
 }
 
 func (w *platformInterfaceWrapper) UsePlatformConnectionOwnerFinder() bool {
-	return true
+	return runtime.GOOS != "windows"
 }
 
 func (w *platformInterfaceWrapper) FindConnectionOwner(request *adapter.FindConnectionOwnerRequest) (*adapter.ConnectionOwner, error) {
@@ -213,7 +213,7 @@ func (w *platformInterfaceWrapper) DisableColors() bool {
 }
 
 func (w *platformInterfaceWrapper) UsePlatformNotification() bool {
-	return true
+	return runtime.GOOS != "windows"
 }
 
 func (w *platformInterfaceWrapper) SendNotification(notification *adapter.Notification) error {
