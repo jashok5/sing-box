@@ -5,25 +5,19 @@ package main
 import "C"
 
 import (
-	"context"
 	stdjson "encoding/json"
 	"errors"
+	"os"
 	"sync"
 	"sync/atomic"
 	"unsafe"
 
-	box "github.com/sagernet/sing-box"
 	lb "github.com/sagernet/sing-box/experimental/libbox"
-	"github.com/sagernet/sing-box/include"
-	"github.com/sagernet/sing-box/option"
-	"github.com/sagernet/sing/common/json"
 )
 
 var (
-	instance       *box.Box
-	instanceCtx    context.Context
-	instanceCancel context.CancelFunc
-	instanceMutex  sync.Mutex
+	commandServer *lb.CommandServer
+	instanceMutex sync.Mutex
 
 	nextHandle atomic.Int64
 	handleMu   sync.RWMutex
@@ -31,6 +25,117 @@ var (
 	commandClientOptionsHandles = map[int64]*lb.CommandClientOptions{}
 	commandClientHandles        = map[int64]*lb.CommandClient{}
 )
+
+type emptyStringIterator struct{}
+
+func (i *emptyStringIterator) Len() int32 {
+	return 0
+}
+
+func (i *emptyStringIterator) HasNext() bool {
+	return false
+}
+
+func (i *emptyStringIterator) Next() string {
+	return ""
+}
+
+type emptyNetworkInterfaceIterator struct{}
+
+func (i *emptyNetworkInterfaceIterator) HasNext() bool {
+	return false
+}
+
+func (i *emptyNetworkInterfaceIterator) Next() *lb.NetworkInterface {
+	return nil
+}
+
+type csharedPlatformInterface struct{}
+
+func (p *csharedPlatformInterface) LocalDNSTransport() lb.LocalDNSTransport {
+	return nil
+}
+
+func (p *csharedPlatformInterface) UsePlatformAutoDetectInterfaceControl() bool {
+	return false
+}
+
+func (p *csharedPlatformInterface) AutoDetectInterfaceControl(fd int32) error {
+	return nil
+}
+
+func (p *csharedPlatformInterface) OpenTun(options lb.TunOptions) (int32, error) {
+	return -1, os.ErrInvalid
+}
+
+func (p *csharedPlatformInterface) UseProcFS() bool {
+	return false
+}
+
+func (p *csharedPlatformInterface) FindConnectionOwner(ipProtocol int32, sourceAddress string, sourcePort int32, destinationAddress string, destinationPort int32) (*lb.ConnectionOwner, error) {
+	return nil, os.ErrInvalid
+}
+
+func (p *csharedPlatformInterface) StartDefaultInterfaceMonitor(listener lb.InterfaceUpdateListener) error {
+	return nil
+}
+
+func (p *csharedPlatformInterface) CloseDefaultInterfaceMonitor(listener lb.InterfaceUpdateListener) error {
+	return nil
+}
+
+func (p *csharedPlatformInterface) GetInterfaces() (lb.NetworkInterfaceIterator, error) {
+	return &emptyNetworkInterfaceIterator{}, nil
+}
+
+func (p *csharedPlatformInterface) UnderNetworkExtension() bool {
+	return false
+}
+
+func (p *csharedPlatformInterface) IncludeAllNetworks() bool {
+	return false
+}
+
+func (p *csharedPlatformInterface) ReadWIFIState() *lb.WIFIState {
+	return nil
+}
+
+func (p *csharedPlatformInterface) SystemCertificates() lb.StringIterator {
+	return &emptyStringIterator{}
+}
+
+func (p *csharedPlatformInterface) ClearDNSCache() {
+}
+
+func (p *csharedPlatformInterface) SendNotification(notification *lb.Notification) error {
+	return nil
+}
+
+type csharedCommandServerHandler struct{}
+
+func (h *csharedCommandServerHandler) ServiceStop() error {
+	instanceMutex.Lock()
+	defer instanceMutex.Unlock()
+	if commandServer == nil {
+		return nil
+	}
+	return commandServer.CloseService()
+}
+
+func (h *csharedCommandServerHandler) ServiceReload() error {
+	return errors.New("service reload not supported in cshared handler")
+}
+
+func (h *csharedCommandServerHandler) GetSystemProxyStatus() (*lb.SystemProxyStatus, error) {
+	return &lb.SystemProxyStatus{Available: false, Enabled: false}, nil
+}
+
+func (h *csharedCommandServerHandler) SetSystemProxyEnabled(enabled bool) error {
+	return nil
+}
+
+func (h *csharedCommandServerHandler) WriteDebugMessage(message string) {
+}
 
 func init() {
 	nextHandle.Store(1000)
@@ -87,38 +192,31 @@ func libbox_run(configContent *C.char) *C.char {
 	instanceMutex.Lock()
 	defer instanceMutex.Unlock()
 
-	if instance != nil {
+	if commandServer != nil {
 		return C.CString("service already running")
 	}
 
 	configStr := C.GoString(configContent)
-	ctx := include.Context(context.Background())
-	options, err := json.UnmarshalExtendedContext[option.Options](ctx, []byte(configStr))
+	handler := &csharedCommandServerHandler{}
+	platformInterface := &csharedPlatformInterface{}
+	server, err := lb.NewCommandServer(handler, platformInterface)
 	if err != nil {
 		return C.CString(err.Error())
 	}
 
-	var cancel context.CancelFunc
-	ctx, cancel = context.WithCancel(ctx)
-	instance, err = box.New(box.Options{
-		Context: ctx,
-		Options: options,
-	})
+	err = server.Start()
 	if err != nil {
-		cancel()
+		server.Close()
 		return C.CString(err.Error())
 	}
 
-	err = instance.Start()
+	err = server.StartOrReloadService(configStr, &lb.OverrideOptions{})
 	if err != nil {
-		instance.Close()
-		instance = nil
-		cancel()
+		server.Close()
 		return C.CString(err.Error())
 	}
 
-	instanceCtx = ctx
-	instanceCancel = cancel
+	commandServer = server
 	return nil
 }
 
@@ -127,15 +225,13 @@ func libbox_stop() *C.char {
 	instanceMutex.Lock()
 	defer instanceMutex.Unlock()
 
-	if instance == nil {
+	if commandServer == nil {
 		return C.CString("service not running")
 	}
 
-	instanceCancel()
-	err := instance.Close()
-	instance = nil
-	instanceCtx = nil
-	instanceCancel = nil
+	err := commandServer.CloseService()
+	commandServer.Close()
+	commandServer = nil
 
 	if err != nil {
 		return C.CString(err.Error())
