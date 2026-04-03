@@ -9,6 +9,7 @@ import (
 	"unsafe"
 
 	box "github.com/sagernet/sing-box"
+	"github.com/sagernet/sing-box/include"
 	_ "github.com/sagernet/sing-box/include"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing/common/json"
@@ -37,7 +38,8 @@ func libbox_run(configContent *C.char) *C.char {
 		return C.CString(err.Error())
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	baseCtx := include.Context(context.Background())
+	ctx, cancel := context.WithCancel(baseCtx)
 	instance, err = box.New(box.Options{
 		Context: ctx,
 		Options: options,
