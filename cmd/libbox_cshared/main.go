@@ -7,6 +7,7 @@ import "C"
 import (
 	stdjson "encoding/json"
 	"errors"
+	"net"
 	"os"
 	"runtime"
 	"sync"
@@ -41,6 +42,27 @@ func (i *emptyStringIterator) Next() string {
 	return ""
 }
 
+type stringArrayIterator struct {
+	values []string
+}
+
+func (i *stringArrayIterator) Len() int32 {
+	return int32(len(i.values))
+}
+
+func (i *stringArrayIterator) HasNext() bool {
+	return len(i.values) > 0
+}
+
+func (i *stringArrayIterator) Next() string {
+	if len(i.values) == 0 {
+		return ""
+	}
+	next := i.values[0]
+	i.values = i.values[1:]
+	return next
+}
+
 type emptyNetworkInterfaceIterator struct{}
 
 func (i *emptyNetworkInterfaceIterator) HasNext() bool {
@@ -49,6 +71,23 @@ func (i *emptyNetworkInterfaceIterator) HasNext() bool {
 
 func (i *emptyNetworkInterfaceIterator) Next() *lb.NetworkInterface {
 	return nil
+}
+
+type networkInterfaceIterator struct {
+	values []*lb.NetworkInterface
+}
+
+func (i *networkInterfaceIterator) HasNext() bool {
+	return len(i.values) > 0
+}
+
+func (i *networkInterfaceIterator) Next() *lb.NetworkInterface {
+	if len(i.values) == 0 {
+		return nil
+	}
+	next := i.values[0]
+	i.values = i.values[1:]
+	return next
 }
 
 type csharedPlatformInterface struct{}
@@ -78,6 +117,15 @@ func (p *csharedPlatformInterface) FindConnectionOwner(ipProtocol int32, sourceA
 }
 
 func (p *csharedPlatformInterface) StartDefaultInterfaceMonitor(listener lb.InterfaceUpdateListener) error {
+	if listener == nil {
+		return nil
+	}
+	defaultName, defaultIndex, err := findDefaultInterface()
+	if err != nil {
+		listener.UpdateDefaultInterface("", -1, false, false)
+		return nil
+	}
+	listener.UpdateDefaultInterface(defaultName, defaultIndex, false, false)
 	return nil
 }
 
@@ -86,7 +134,50 @@ func (p *csharedPlatformInterface) CloseDefaultInterfaceMonitor(listener lb.Inte
 }
 
 func (p *csharedPlatformInterface) GetInterfaces() (lb.NetworkInterfaceIterator, error) {
-	return &emptyNetworkInterfaceIterator{}, nil
+	netInterfaces, err := net.Interfaces()
+	if err != nil {
+		return &emptyNetworkInterfaceIterator{}, nil
+	}
+
+	result := make([]*lb.NetworkInterface, 0, len(netInterfaces))
+	for _, iface := range netInterfaces {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		cidrs := make([]string, 0, len(addrs))
+		for _, addr := range addrs {
+			cidr := addr.String()
+			if cidr == "" {
+				continue
+			}
+			cidrs = append(cidrs, cidr)
+		}
+		if len(cidrs) == 0 {
+			continue
+		}
+
+		result = append(result, &lb.NetworkInterface{
+			Index:     int32(iface.Index),
+			MTU:       int32(iface.MTU),
+			Name:      iface.Name,
+			Addresses: &stringArrayIterator{values: cidrs},
+			Flags:     int32(iface.Flags),
+			Type:      lb.InterfaceTypeOther,
+			DNSServer: &emptyStringIterator{},
+			Metered:   false,
+		})
+	}
+
+	if len(result) == 0 {
+		return &emptyNetworkInterfaceIterator{}, nil
+	}
+
+	return &networkInterfaceIterator{values: result}, nil
 }
 
 func (p *csharedPlatformInterface) UnderNetworkExtension() bool {
@@ -114,6 +205,26 @@ func (p *csharedPlatformInterface) SendNotification(notification *lb.Notificatio
 
 func (p *csharedPlatformInterface) DisablePlatformInterface() bool {
 	return runtime.GOOS == "windows"
+}
+
+func findDefaultInterface() (string, int32, error) {
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return "", -1, err
+	}
+
+	for _, iface := range interfaces {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, addrErr := iface.Addrs()
+		if addrErr != nil || len(addrs) == 0 {
+			continue
+		}
+		return iface.Name, int32(iface.Index), nil
+	}
+
+	return "", -1, os.ErrNotExist
 }
 
 type csharedCommandServerHandler struct{}
