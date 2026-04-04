@@ -9,7 +9,7 @@ import (
 	"errors"
 	"net"
 	"os"
-	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -167,7 +167,7 @@ func (p *csharedPlatformInterface) GetInterfaces() (lb.NetworkInterfaceIterator,
 			Name:      iface.Name,
 			Addresses: &stringArrayIterator{values: cidrs},
 			Flags:     int32(iface.Flags),
-			Type:      lb.InterfaceTypeOther,
+			Type:      inferInterfaceType(iface.Name),
 			DNSServer: &emptyStringIterator{},
 			Metered:   false,
 		})
@@ -204,7 +204,21 @@ func (p *csharedPlatformInterface) SendNotification(notification *lb.Notificatio
 }
 
 func (p *csharedPlatformInterface) DisablePlatformInterface() bool {
-	return runtime.GOOS == "windows"
+	return false
+}
+
+func inferInterfaceType(name string) int32 {
+	lower := strings.ToLower(name)
+	if strings.Contains(lower, "wi-fi") || strings.Contains(lower, "wifi") || strings.Contains(lower, "wlan") {
+		return lb.InterfaceTypeWIFI
+	}
+	if strings.Contains(lower, "ethernet") || strings.HasPrefix(lower, "eth") {
+		return lb.InterfaceTypeEthernet
+	}
+	if strings.Contains(lower, "cell") || strings.Contains(lower, "wwan") || strings.Contains(lower, "mobile") || strings.Contains(lower, "lte") {
+		return lb.InterfaceTypeCellular
+	}
+	return lb.InterfaceTypeOther
 }
 
 func findDefaultInterface() (string, int32, error) {
