@@ -7,8 +7,11 @@ import "C"
 import (
 	stdjson "encoding/json"
 	"errors"
+	"fmt"
 	"net"
+	"net/netip"
 	"os"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -151,7 +154,7 @@ func (p *csharedPlatformInterface) GetInterfaces() (lb.NetworkInterfaceIterator,
 		}
 		cidrs := make([]string, 0, len(addrs))
 		for _, addr := range addrs {
-			cidr := addr.String()
+			cidr := normalizeInterfaceCIDR(addr)
 			if cidr == "" {
 				continue
 			}
@@ -219,6 +222,23 @@ func inferInterfaceType(name string) int32 {
 		return lb.InterfaceTypeCellular
 	}
 	return lb.InterfaceTypeOther
+}
+
+func normalizeInterfaceCIDR(addr net.Addr) string {
+	ipNet, ok := addr.(*net.IPNet)
+	if !ok || ipNet == nil {
+		return ""
+	}
+	ones, bits := ipNet.Mask.Size()
+	if ones < 0 || bits <= 0 {
+		return ""
+	}
+	netAddr, ok := netip.AddrFromSlice(ipNet.IP)
+	if !ok {
+		return ""
+	}
+	netAddr = netAddr.Unmap()
+	return netip.PrefixFrom(netAddr, ones).String()
 }
 
 func findDefaultInterface() (string, int32, error) {
@@ -318,7 +338,13 @@ func getCommandClient(handle C.longlong) (*lb.CommandClient, error) {
 }
 
 //export libbox_run
-func libbox_run(configContent *C.char) *C.char {
+func libbox_run(configContent *C.char) (ret *C.char) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			ret = C.CString(fmt.Sprintf("panic in libbox_run: %v\n%s", recovered, string(debug.Stack())))
+		}
+	}()
+
 	instanceMutex.Lock()
 	defer instanceMutex.Unlock()
 
