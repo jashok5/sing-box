@@ -36,3 +36,5 @@ AGENTS.md
 /sing-box-lib-macos-amd64.dylib
 /sing-box-lib-macos-arm64.dylib
 *.h
+*.so
+*.dll
