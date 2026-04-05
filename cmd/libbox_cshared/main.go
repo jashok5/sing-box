@@ -1,7 +1,38 @@
 package main
 
-// #include <stdlib.h>
-// #include <stdint.h>
+/*
+#include <stdlib.h>
+#include <stdint.h>
+
+typedef void (*command_client_connected_cb)(size_t context);
+typedef void (*command_client_disconnected_cb)(size_t context, const char* message);
+typedef void (*command_client_log_cb)(size_t context, int level, const char* message);
+
+typedef struct {
+	size_t Context;
+	void* OnConnected;
+	void* OnDisconnected;
+	void* OnLog;
+} CommandClientCallbacks;
+
+static void call_command_client_connected(void* fn, size_t context) {
+	if (fn != NULL) {
+		((command_client_connected_cb) fn)(context);
+	}
+}
+
+static void call_command_client_disconnected(void* fn, size_t context, const char* message) {
+	if (fn != NULL) {
+		((command_client_disconnected_cb) fn)(context, message);
+	}
+}
+
+static void call_command_client_log(void* fn, size_t context, int level, const char* message) {
+	if (fn != NULL) {
+		((command_client_log_cb) fn)(context, level, message);
+	}
+}
+*/
 import "C"
 
 import (
@@ -262,6 +293,58 @@ func findDefaultInterface() (string, int32, error) {
 }
 
 type csharedCommandServerHandler struct{}
+
+type csharedCommandClientCallbackHandler struct {
+	context        C.size_t
+	onConnected    unsafe.Pointer
+	onDisconnected unsafe.Pointer
+	onLog          unsafe.Pointer
+}
+
+func (h *csharedCommandClientCallbackHandler) Connected() {
+	if h.onConnected != nil {
+		C.call_command_client_connected(h.onConnected, h.context)
+	}
+}
+
+func (h *csharedCommandClientCallbackHandler) Disconnected(message string) {
+	if h.onDisconnected == nil {
+		return
+	}
+	cMessage := C.CString(message)
+	defer C.free(unsafe.Pointer(cMessage))
+	C.call_command_client_disconnected(h.onDisconnected, h.context, cMessage)
+}
+
+func (h *csharedCommandClientCallbackHandler) SetDefaultLogLevel(level int32) {}
+
+func (h *csharedCommandClientCallbackHandler) ClearLogs() {}
+
+func (h *csharedCommandClientCallbackHandler) WriteLogs(messageList lb.LogIterator) {
+	if h.onLog == nil || messageList == nil {
+		return
+	}
+	for messageList.HasNext() {
+		next := messageList.Next()
+		if next == nil {
+			continue
+		}
+		cMessage := C.CString(next.Message)
+		C.call_command_client_log(h.onLog, h.context, C.int(next.Level), cMessage)
+		C.free(unsafe.Pointer(cMessage))
+	}
+}
+
+func (h *csharedCommandClientCallbackHandler) WriteStatus(message *lb.StatusMessage) {}
+
+func (h *csharedCommandClientCallbackHandler) WriteGroups(message lb.OutboundGroupIterator) {}
+
+func (h *csharedCommandClientCallbackHandler) InitializeClashMode(modeList lb.StringIterator, currentMode string) {
+}
+
+func (h *csharedCommandClientCallbackHandler) UpdateClashMode(newMode string) {}
+
+func (h *csharedCommandClientCallbackHandler) WriteConnectionEvents(events *lb.ConnectionEvents) {}
 
 func (h *csharedCommandServerHandler) ServiceStop() error {
 	instanceMutex.Lock()
@@ -549,6 +632,31 @@ func libbox_command_client_new(optionsHandle C.longlong, outHandle *C.longlong) 
 		return cError(err)
 	}
 	client := lb.NewCommandClient(nil, options)
+	handle := nextID()
+	handleMu.Lock()
+	commandClientHandles[handle] = client
+	handleMu.Unlock()
+	*outHandle = C.longlong(handle)
+	return nil
+}
+
+//export libbox_command_client_new_with_callbacks
+func libbox_command_client_new_with_callbacks(optionsHandle C.longlong, callbacks *C.CommandClientCallbacks, outHandle *C.longlong) *C.char {
+	if outHandle == nil {
+		return cError(errors.New("out handle pointer is nil"))
+	}
+	options, err := getCommandClientOptions(optionsHandle)
+	if err != nil {
+		return cError(err)
+	}
+	handler := &csharedCommandClientCallbackHandler{}
+	if callbacks != nil {
+		handler.context = callbacks.Context
+		handler.onConnected = callbacks.OnConnected
+		handler.onDisconnected = callbacks.OnDisconnected
+		handler.onLog = callbacks.OnLog
+	}
+	client := lb.NewCommandClient(handler, options)
 	handle := nextID()
 	handleMu.Lock()
 	commandClientHandles[handle] = client
