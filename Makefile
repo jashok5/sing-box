@@ -17,6 +17,7 @@ LIBBOX_FFI_CONFIG ?= ./experimental/libbox/ffi.json
 
 LIB_MAIN = ./cmd/libbox_cshared
 LIB_NAME = sing-box-lib
+LINUX_LIBBOX_OUTPUT_DIR ?= ../linux/third_party/libbox/linux
 
 .PHONY: test release docs build lib_darwin lib_linux lib_windows
 
@@ -331,8 +332,9 @@ build_lib_cshared:
 	$(MAKE) build_lib_macos
 
 build_lib_linux:
-	GOOS=linux GOARCH=amd64 CGO_ENABLED=1 CC="$(CC_LINUX_AMD64)" CXX="$(CXX_LINUX_AMD64)" go build $(PARAMS) -buildmode=c-shared -tags "$(TAGS)" -o sing-box-amd64.so ./cmd/libbox_cshared_linux
-	GOOS=linux GOARCH=arm64 CGO_ENABLED=1 CC="$(CC_LINUX_ARM64)" CXX="$(CXX_LINUX_ARM64)" go build $(PARAMS) -buildmode=c-shared -tags "$(TAGS)" -o sing-box-arm64.so ./cmd/libbox_cshared_linux
+	mkdir -p $(LINUX_LIBBOX_OUTPUT_DIR)
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=1 CC="$(CC_LINUX_AMD64)" CXX="$(CXX_LINUX_AMD64)" go build $(PARAMS) -buildmode=c-shared -tags "$(TAGS)" -o $(LINUX_LIBBOX_OUTPUT_DIR)/sing-box-amd64.so ./cmd/libbox_cshared_linux
+	GOOS=linux GOARCH=arm64 CGO_ENABLED=1 CC="$(CC_LINUX_ARM64)" CXX="$(CXX_LINUX_ARM64)" go build $(PARAMS) -buildmode=c-shared -tags "$(TAGS)" -o $(LINUX_LIBBOX_OUTPUT_DIR)/sing-box-arm64.so ./cmd/libbox_cshared_linux
 
 build_lib_windows:
 	GOOS=windows GOARCH=amd64 CGO_ENABLED=1 CC="$(CC_WINDOWS_AMD64)" CXX="$(CXX_WINDOWS_AMD64)" go build $(PARAMS) -buildmode=c-shared -tags "$(WIN_TAGS)" -o sing-box-amd64.dll ./cmd/libbox_cshared_windows

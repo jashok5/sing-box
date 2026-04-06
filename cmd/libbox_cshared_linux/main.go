@@ -12,7 +12,9 @@ import "C"
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"runtime/debug"
 	"sync"
 	"unsafe"
 
@@ -111,8 +113,46 @@ func buildBox(configStr string) (*box.Box, context.Context, context.CancelFunc, 
 	return service, ctx, cancel, nil
 }
 
+func closeRunningInstanceLocked() error {
+	if instance == nil {
+		return nil
+	}
+
+	instanceCancel()
+	err := instance.Close()
+	instance = nil
+	instanceCtx = nil
+	instanceCancel = nil
+	return err
+}
+
+func startNewInstanceLocked(configStr string) error {
+	service, ctx, cancel, err := buildBox(configStr)
+	if err != nil {
+		return err
+	}
+
+	err = service.Start()
+	if err != nil {
+		service.Close()
+		cancel()
+		return err
+	}
+
+	instance = service
+	instanceCtx = ctx
+	instanceCancel = cancel
+	return nil
+}
+
 //export libbox_run
-func libbox_run(configContent *C.char) *C.char {
+func libbox_run(configContent *C.char) (ret *C.char) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			ret = C.CString(fmt.Sprintf("panic in libbox_run: %v\n%s", recovered, string(debug.Stack())))
+		}
+	}()
+
 	instanceMutex.Lock()
 	defer instanceMutex.Unlock()
 
@@ -120,21 +160,10 @@ func libbox_run(configContent *C.char) *C.char {
 		return C.CString("service already running")
 	}
 
-	service, ctx, cancel, err := buildBox(C.GoString(configContent))
+	err := startNewInstanceLocked(C.GoString(configContent))
 	if err != nil {
 		return C.CString(err.Error())
 	}
-
-	err = service.Start()
-	if err != nil {
-		service.Close()
-		cancel()
-		return C.CString(err.Error())
-	}
-
-	instance = service
-	instanceCtx = ctx
-	instanceCancel = cancel
 	return nil
 }
 
@@ -150,7 +179,13 @@ func libbox_run_from_path(configPath *C.char) *C.char {
 }
 
 //export libbox_stop
-func libbox_stop() *C.char {
+func libbox_stop() (ret *C.char) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			ret = C.CString(fmt.Sprintf("panic in libbox_stop: %v\n%s", recovered, string(debug.Stack())))
+		}
+	}()
+
 	instanceMutex.Lock()
 	defer instanceMutex.Unlock()
 
@@ -158,12 +193,60 @@ func libbox_stop() *C.char {
 		return C.CString("service not running")
 	}
 
-	instanceCancel()
-	err := instance.Close()
-	instance = nil
-	instanceCtx = nil
-	instanceCancel = nil
+	err := closeRunningInstanceLocked()
+	if err != nil {
+		return C.CString(err.Error())
+	}
+	return nil
+}
 
+//export libbox_reload
+func libbox_reload(configContent *C.char) (ret *C.char) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			ret = C.CString(fmt.Sprintf("panic in libbox_reload: %v\n%s", recovered, string(debug.Stack())))
+		}
+	}()
+
+	instanceMutex.Lock()
+	defer instanceMutex.Unlock()
+
+	if instance == nil {
+		return C.CString("service not running")
+	}
+
+	configStr := C.GoString(configContent)
+	closeErr := closeRunningInstanceLocked()
+	if closeErr != nil {
+		return C.CString(closeErr.Error())
+	}
+
+	err := startNewInstanceLocked(configStr)
+	if err != nil {
+		return C.CString(err.Error())
+	}
+	return nil
+}
+
+//export libbox_start_or_reload
+func libbox_start_or_reload(configContent *C.char) (ret *C.char) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			ret = C.CString(fmt.Sprintf("panic in libbox_start_or_reload: %v\n%s", recovered, string(debug.Stack())))
+		}
+	}()
+
+	instanceMutex.Lock()
+	defer instanceMutex.Unlock()
+
+	configStr := C.GoString(configContent)
+	if instance != nil {
+		if err := closeRunningInstanceLocked(); err != nil {
+			return C.CString(err.Error())
+		}
+	}
+
+	err := startNewInstanceLocked(configStr)
 	if err != nil {
 		return C.CString(err.Error())
 	}
@@ -181,7 +264,13 @@ func libbox_is_running() C.int {
 }
 
 //export libbox_check_config
-func libbox_check_config(configContent *C.char) *C.char {
+func libbox_check_config(configContent *C.char) (ret *C.char) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			ret = C.CString(fmt.Sprintf("panic in libbox_check_config: %v\n%s", recovered, string(debug.Stack())))
+		}
+	}()
+
 	service, _, cancel, err := buildBox(C.GoString(configContent))
 	if err != nil {
 		return C.CString(err.Error())
