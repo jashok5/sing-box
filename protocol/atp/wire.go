@@ -41,6 +41,7 @@ const (
 	TLVOpenNetwork  uint16 = 0x0101
 	TLVOpenHost     uint16 = 0x0102
 	TLVOpenPort     uint16 = 0x0103
+	TLVOpenDomain   uint16 = 0x0104
 	NetworkTCP      uint8  = 1
 	NetworkUDP      uint8  = 2
 )
@@ -195,6 +196,7 @@ type OpenRequest struct {
 	Network uint8
 	Host    string
 	Port    uint16
+	Domain  string
 }
 
 func EncodeOpenRequest(req OpenRequest) ([]byte, error) {
@@ -203,11 +205,15 @@ func EncodeOpenRequest(req OpenRequest) ([]byte, error) {
 	}
 	portBytes := make([]byte, 2)
 	binary.BigEndian.PutUint16(portBytes, req.Port)
-	return EncodeTLVs([]TLV{
+	tlvs := []TLV{
 		{Type: TLVOpenNetwork, Value: []byte{req.Network}},
 		{Type: TLVOpenHost, Value: []byte(req.Host)},
 		{Type: TLVOpenPort, Value: portBytes},
-	})
+	}
+	if req.Domain != "" {
+		tlvs = append(tlvs, TLV{Type: TLVOpenDomain, Value: []byte(req.Domain)})
+	}
+	return EncodeTLVs(tlvs)
 }
 
 func DecodeOpenRequest(payload []byte) (OpenRequest, error) {
@@ -230,6 +236,8 @@ func DecodeOpenRequest(payload []byte) (OpenRequest, error) {
 				return OpenRequest{}, fmt.Errorf("%w: invalid port length", ErrInvalidControlFrame)
 			}
 			req.Port = binary.BigEndian.Uint16(it.Value)
+		case TLVOpenDomain:
+			req.Domain = string(it.Value)
 		}
 	}
 	if (req.Network != NetworkTCP && req.Network != NetworkUDP) || req.Host == "" || req.Port == 0 {

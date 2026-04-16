@@ -1,6 +1,7 @@
 package atp
 
 import (
+	"context"
 	"net"
 	"testing"
 	"time"
@@ -23,7 +24,7 @@ func TestClientHandshakeAndTCPFlow(t *testing.T) {
 		t.Fatalf("handshake failed: %v", err)
 	}
 	destination := M.ParseSocksaddrHostPort("example.com", 443)
-	streamID, st, err := link.open(NetworkTCP, destination)
+	streamID, st, err := link.open(context.Background(), NetworkTCP, destination)
 	if err != nil {
 		t.Fatalf("open tcp stream failed: %v", err)
 	}
@@ -63,7 +64,7 @@ func TestClientHandshakeAndUDPFlow(t *testing.T) {
 		t.Fatalf("handshake failed: %v", err)
 	}
 	destination := M.ParseSocksaddrHostPort("8.8.8.8", 53)
-	streamID, st, err := link.open(NetworkUDP, destination)
+	streamID, st, err := link.open(context.Background(), NetworkUDP, destination)
 	if err != nil {
 		t.Fatalf("open udp stream failed: %v", err)
 	}

@@ -168,7 +168,7 @@ func (o *Outbound) openStreamWithRetry(ctx context.Context, network uint8, desti
 			lastErr = err
 			continue
 		}
-		streamID, st, err := link.open(network, destination)
+		streamID, st, err := link.open(ctx, network, destination)
 		if err == nil {
 			return link, streamID, st, nil
 		}
@@ -457,15 +457,31 @@ func (s *sessionConn) readLoop() {
 	}
 }
 
-func (s *sessionConn) open(network uint8, destination M.Socksaddr) (uint32, *streamState, error) {
+func (s *sessionConn) open(ctx context.Context, network uint8, destination M.Socksaddr) (uint32, *streamState, error) {
+	var domain string
+	if inbound := adapter.ContextFrom(ctx); inbound != nil {
+		domain = strings.TrimSpace(inbound.Domain)
+		if domain != "" {
+			domain = strings.TrimSuffix(domain, ".")
+		}
+		if domain == "" && inbound.Destination.IsDomain() {
+			domain = strings.TrimSpace(inbound.Destination.Fqdn)
+		}
+		if domain == "" && inbound.OriginDestination.IsDomain() {
+			domain = strings.TrimSpace(inbound.OriginDestination.Fqdn)
+		}
+	}
 	host := destination.AddrString()
 	if destination.IsDomain() {
 		host = destination.Fqdn
+		if domain == "" {
+			domain = host
+		}
 	}
 	if host == "" || destination.Port == 0 {
 		return 0, nil, os.ErrInvalid
 	}
-	payload, err := EncodeOpenRequest(OpenRequest{Network: network, Host: host, Port: destination.Port})
+	payload, err := EncodeOpenRequest(OpenRequest{Network: network, Host: host, Port: destination.Port, Domain: domain})
 	if err != nil {
 		return 0, nil, err
 	}
