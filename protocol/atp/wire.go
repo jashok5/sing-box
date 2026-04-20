@@ -42,6 +42,13 @@ const (
 	TLVOpenHost     uint16 = 0x0102
 	TLVOpenPort     uint16 = 0x0103
 	TLVOpenDomain   uint16 = 0x0104
+	TLVCoverMode    uint16 = 0x0201
+	TLVCoverPadding uint16 = 0x0202
+	TLVCoverTS      uint16 = 0x0203
+	TLVCoverRandom  uint16 = 0x0204
+	TLVCoverToken   uint16 = 0x0205
+	TLVCoverPass    uint16 = 0x0206
+	TLVCoverResume  uint16 = 0x0207
 	NetworkTCP      uint8  = 1
 	NetworkUDP      uint8  = 2
 )

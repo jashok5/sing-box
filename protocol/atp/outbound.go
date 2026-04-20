@@ -50,9 +50,9 @@ type Outbound struct {
 }
 
 const (
-	defaultSessionIdleTimeout   = 60 * time.Second
-	defaultSessionProbeInterval = 20 * time.Second
-	defaultSessionProbeTimeout  = 3 * time.Second
+	defaultSessionIdleTimeout   = 20 * time.Second
+	defaultSessionProbeInterval = 6 * time.Second
+	defaultSessionProbeTimeout  = 2 * time.Second
 )
 
 func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.ATPOutboundOptions) (adapter.Outbound, error) {
@@ -90,10 +90,7 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 		}
 		tlsConfig = config
 		if transport == "tls" || transport == "quic" {
-			nextProtos := tlsConfig.NextProtos()
-			if !containsALPN(nextProtos, "atp") {
-				tlsConfig.SetNextProtos(append([]string{"atp"}, nextProtos...))
-			}
+			tlsConfig.SetNextProtos(preferredALPNForTransport(tlsConfig.NextProtos(), transport))
 		}
 		tlsDialer = tls.NewDialer(outboundDialer, tlsConfig)
 	}
@@ -199,6 +196,7 @@ func (o *Outbound) getOrCreateSession(ctx context.Context) (*sessionConn, error)
 	if resumeTicket != "" {
 		o.resumeTicket = resumeTicket
 	}
+	link.owner = o
 	o.session = link
 	return link, nil
 }
@@ -216,7 +214,7 @@ func (o *Outbound) invalidateSession(link *sessionConn) {
 }
 
 func (o *Outbound) maintainSessionLoop(ctx context.Context) {
-	ticker := time.NewTicker(10 * time.Second)
+	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
 	for {
 		select {
@@ -280,7 +278,7 @@ func (o *Outbound) newSessionConn(ctx context.Context, resumeTicket string) (*se
 		_ = rawConn.Close()
 		return nil, "", err
 	}
-	link, newTicket, err := clientHandshake(rawConn, o.clientName, o.token, o.password, resumeTicket)
+	link, newTicket, err := clientHandshake(rawConn, o.clientName, o.token, o.password, resumeTicket, o.transport)
 	if err != nil {
 		_ = rawConn.Close()
 		return nil, "", err
@@ -294,7 +292,7 @@ func (o *Outbound) newSessionConnFromRaw(rawConn net.Conn, resumeTicket string) 
 		_ = rawConn.Close()
 		return nil, "", err
 	}
-	link, newTicket, err := clientHandshake(rawConn, o.clientName, o.token, o.password, resumeTicket)
+	link, newTicket, err := clientHandshake(rawConn, o.clientName, o.token, o.password, resumeTicket, o.transport)
 	if err != nil {
 		_ = rawConn.Close()
 		return nil, "", err
@@ -303,25 +301,76 @@ func (o *Outbound) newSessionConnFromRaw(rawConn net.Conn, resumeTicket string) 
 	return link, newTicket, nil
 }
 
-func containsALPN(items []string, target string) bool {
-	for _, item := range items {
-		if strings.EqualFold(strings.TrimSpace(item), target) {
-			return true
-		}
+func preferredALPNForTransport(existing []string, transport string) []string {
+	preferred := []string{"atp", "h2", "http/1.1"}
+	if strings.EqualFold(strings.TrimSpace(transport), "quic") {
+		preferred = []string{"atp", "h3"}
 	}
-	return false
+	return mergeALPNWithPreference(existing, preferred)
 }
 
-func clientHandshake(conn net.Conn, clientName string, token string, password string, resumeTicket string) (*sessionConn, string, error) {
+func mergeALPNWithPreference(existing []string, preferred []string) []string {
+	out := make([]string, 0, len(preferred)+len(existing))
+	seen := make(map[string]struct{}, len(preferred)+len(existing))
+	for _, proto := range preferred {
+		p := strings.TrimSpace(proto)
+		if p == "" {
+			continue
+		}
+		k := strings.ToLower(p)
+		if _, ok := seen[k]; ok {
+			continue
+		}
+		seen[k] = struct{}{}
+		out = append(out, p)
+	}
+	for _, proto := range existing {
+		p := strings.TrimSpace(proto)
+		if p == "" {
+			continue
+		}
+		k := strings.ToLower(p)
+		if _, ok := seen[k]; ok {
+			continue
+		}
+		seen[k] = struct{}{}
+		out = append(out, p)
+	}
+	return out
+}
+
+func clientHandshake(conn net.Conn, clientName string, token string, password string, resumeTicket string, transport string) (*sessionConn, string, error) {
 	seq := atomic.Uint32{}
 	nonce := make([]byte, 16)
 	if _, err := rand.Read(nonce); err != nil {
 		return nil, "", err
 	}
 	helloItems := []TLV{{Type: TLVClientName, Value: []byte(clientName)}, {Type: TLVClientNonce, Value: nonce}}
-	if resumeTicket != "" {
-		helloItems = append(helloItems, TLV{Type: TLVResumeReq, Value: []byte(resumeTicket)})
+	coverAuth, err := EncodeTLVs([]TLV{
+		{Type: TLVAuthToken, Value: []byte(token)},
+		{Type: TLVAuthPassword, Value: []byte(password)},
+		{Type: TLVResumeReq, Value: []byte(resumeTicket)},
+	})
+	if err != nil {
+		return nil, "", err
 	}
+	ts := make([]byte, 8)
+	binary.BigEndian.PutUint64(ts, uint64(time.Now().Unix()))
+	randBytes := make([]byte, 16)
+	if _, err = rand.Read(randBytes); err != nil {
+		return nil, "", err
+	}
+	pad := make([]byte, 32)
+	if _, err = rand.Read(pad); err != nil {
+		return nil, "", err
+	}
+	helloItems = append(helloItems,
+		TLV{Type: TLVCoverMode, Value: []byte(coverModeByTransport(transport))},
+		TLV{Type: TLVCoverTS, Value: ts},
+		TLV{Type: TLVCoverRandom, Value: randBytes},
+		TLV{Type: TLVCoverPadding, Value: pad},
+		TLV{Type: TLVCoverToken, Value: coverAuth},
+	)
 	helloPayload, err := EncodeTLVs(helloItems)
 	if err != nil {
 		return nil, "", err
@@ -343,6 +392,10 @@ func clientHandshake(conn net.Conn, clientName string, token string, password st
 	if err != nil {
 		return nil, "", err
 	}
+	if len(helloMap[TLVCoverToken]) == 0 {
+		return nil, "", E.New("missing cover envelope in HELLO")
+	}
+	helloMap = normalizedHelloTLVMap(helloMap)
 	if len(helloMap[TLVSessionID]) != 8 {
 		return nil, "", E.New("missing session id")
 	}
@@ -353,7 +406,11 @@ func clientHandshake(conn net.Conn, clientName string, token string, password st
 		if password != "" {
 			authItems = append(authItems, TLV{Type: TLVAuthPassword, Value: []byte(password)})
 		}
-		authPayload, err := EncodeTLVs(authItems)
+		rawAuthPayload, err := EncodeTLVs(authItems)
+		if err != nil {
+			return nil, "", err
+		}
+		authPayload, err := buildOutboundCoverEnvelope(coverModeByTransport(transport), rawAuthPayload)
 		if err != nil {
 			return nil, "", err
 		}
@@ -375,6 +432,10 @@ func clientHandshake(conn net.Conn, clientName string, token string, password st
 	if err != nil {
 		return nil, "", err
 	}
+	if len(authMap[TLVCoverToken]) == 0 {
+		return nil, "", E.New("missing cover envelope in AUTH")
+	}
+	authMap = normalizedAuthTLVMap(authMap)
 	if string(authMap[TLVStatus]) != "ok" {
 		return nil, "", E.New("auth failed")
 	}
@@ -386,9 +447,75 @@ func clientHandshake(conn net.Conn, clientName string, token string, password st
 	return link, string(authMap[TLVResumeTicket]), nil
 }
 
+func coverModeByTransport(transport string) string {
+	if strings.EqualFold(strings.TrimSpace(transport), "quic") {
+		return "h3"
+	}
+	return "h2"
+}
+
+func normalizedHelloTLVMap(in map[uint16][]byte) map[uint16][]byte {
+	decoded, ok := decodeCoverTokenMap(in)
+	if !ok {
+		return in
+	}
+	mergeTLVFields(in, decoded, TLVSessionID, TLVServerNonce, TLVResumeAccept)
+	return in
+}
+
+func normalizedAuthTLVMap(in map[uint16][]byte) map[uint16][]byte {
+	decoded, ok := decodeCoverTokenMap(in)
+	if !ok {
+		return in
+	}
+	mergeTLVFields(in, decoded, TLVStatus, TLVResumeTicket, TLVErrorReason)
+	return in
+}
+
+func decodeCoverTokenMap(in map[uint16][]byte) (map[uint16][]byte, bool) {
+	raw := in[TLVCoverToken]
+	if len(raw) == 0 {
+		return nil, false
+	}
+	decoded, err := ParseTLVMap(raw)
+	if err != nil {
+		return nil, false
+	}
+	return decoded, true
+}
+
+func mergeTLVFields(dst map[uint16][]byte, src map[uint16][]byte, fields ...uint16) {
+	for _, field := range fields {
+		if value := src[field]; len(value) > 0 {
+			dst[field] = value
+		}
+	}
+}
+
+func buildOutboundCoverEnvelope(mode string, payload []byte) ([]byte, error) {
+	ts := make([]byte, 8)
+	binary.BigEndian.PutUint64(ts, uint64(time.Now().Unix()))
+	random := make([]byte, 16)
+	if _, err := rand.Read(random); err != nil {
+		return nil, err
+	}
+	padding := make([]byte, 32)
+	if _, err := rand.Read(padding); err != nil {
+		return nil, err
+	}
+	return EncodeTLVs([]TLV{
+		{Type: TLVCoverMode, Value: []byte(mode)},
+		{Type: TLVCoverTS, Value: ts},
+		{Type: TLVCoverRandom, Value: random},
+		{Type: TLVCoverPadding, Value: padding},
+		{Type: TLVCoverToken, Value: payload},
+	})
+}
+
 type sessionConn struct {
 	conn       net.Conn
 	sessionID  uint64
+	owner      *Outbound
 	seq        atomic.Uint32
 	writeMu    sync.Mutex
 	streamID   atomic.Uint32
@@ -420,11 +547,13 @@ func (s *sessionConn) readLoop() {
 	for {
 		frame, err := ReadFrame(s.conn)
 		if err != nil {
+			s.notifyOwnerSessionLost()
 			s.closeAllStreams()
 			_ = s.close()
 			return
 		}
 		if frame.Header.Type == TypeError {
+			s.notifyOwnerSessionLost()
 			s.closeAllStreams()
 			_ = s.close()
 			return
@@ -455,6 +584,18 @@ func (s *sessionConn) readLoop() {
 			return
 		}
 	}
+}
+
+func (s *sessionConn) notifyOwnerSessionLost() {
+	if s == nil || s.owner == nil {
+		return
+	}
+	o := s.owner
+	o.sessionMu.Lock()
+	if o.session == s {
+		o.session = nil
+	}
+	o.sessionMu.Unlock()
 }
 
 func (s *sessionConn) open(ctx context.Context, network uint8, destination M.Socksaddr) (uint32, *streamState, error) {
@@ -517,9 +658,14 @@ func (s *sessionConn) writeFrame(streamID uint32, frameType uint8, payload []byt
 	if payload != nil {
 		payload = append([]byte(nil), payload...)
 	}
-	if err := WriteFrame(s.conn, &Frame{Header: Header{Magic: Magic, Version: VersionV1, Type: frameType, SessionID: s.sessionID, StreamID: streamID, Seq: s.seq.Add(1)}, Payload: payload}); err != nil {
+	if err := s.conn.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
 		return err
 	}
+	if err := WriteFrame(s.conn, &Frame{Header: Header{Magic: Magic, Version: VersionV1, Type: frameType, SessionID: s.sessionID, StreamID: streamID, Seq: s.seq.Add(1)}, Payload: payload}); err != nil {
+		s.notifyOwnerSessionLost()
+		return err
+	}
+	_ = s.conn.SetWriteDeadline(time.Time{})
 	s.touch()
 	return nil
 }
@@ -559,6 +705,7 @@ func (s *sessionConn) close() error {
 	if !s.closed.CompareAndSwap(false, true) {
 		return nil
 	}
+	s.notifyOwnerSessionLost()
 	s.closeAllStreams()
 	return s.conn.Close()
 }

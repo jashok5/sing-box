@@ -19,7 +19,7 @@ func TestClientHandshakeAndTCPFlow(t *testing.T) {
 		serverDone <- runMockATPServerTCP(server, "token-a")
 	}()
 
-	link, _, err := clientHandshake(client, "test-client", "token-a", "secret", "")
+	link, _, err := clientHandshake(client, "test-client", "token-a", "secret", "", "tls")
 	if err != nil {
 		t.Fatalf("handshake failed: %v", err)
 	}
@@ -59,7 +59,7 @@ func TestClientHandshakeAndUDPFlow(t *testing.T) {
 		serverDone <- runMockATPServerUDP(server, "token-u")
 	}()
 
-	link, _, err := clientHandshake(client, "test-client", "token-u", "secret", "")
+	link, _, err := clientHandshake(client, "test-client", "token-u", "secret", "", "quic")
 	if err != nil {
 		t.Fatalf("handshake failed: %v", err)
 	}
@@ -99,7 +99,7 @@ func TestClientHandshakeResumeAccepted(t *testing.T) {
 		serverDone <- runMockATPResumeAcceptedServer(server, "resume-ok")
 	}()
 
-	link, ticket, err := clientHandshake(client, "test-client", "token-r", "secret", "resume-ok")
+	link, ticket, err := clientHandshake(client, "test-client", "token-r", "secret", "resume-ok", "tls")
 	if err != nil {
 		t.Fatalf("resume handshake failed: %v", err)
 	}
@@ -122,7 +122,7 @@ func TestClientHandshakeResumeFallbackAuth(t *testing.T) {
 		serverDone <- runMockATPResumeFallbackServer(server, "token-f")
 	}()
 
-	link, ticket, err := clientHandshake(client, "test-client", "token-f", "secret", "resume-old")
+	link, ticket, err := clientHandshake(client, "test-client", "token-f", "secret", "resume-old", "tls")
 	if err != nil {
 		t.Fatalf("resume fallback handshake failed: %v", err)
 	}
@@ -152,10 +152,18 @@ func runMockATPServerTCP(conn net.Conn, expectToken string) error {
 	if hello.Header.Type != TypeHello {
 		return ErrInvalidControlFrame
 	}
+	helloMap, err := decodeCoverMap(hello.Payload)
+	if err != nil {
+		return err
+	}
+	if string(helloMap[TLVAuthToken]) != expectToken || string(helloMap[TLVAuthPassword]) != "secret" {
+		return ErrInvalidControlFrame
+	}
 	sessionID := uint64(9)
 	sid := make([]byte, 8)
 	putSessionID(sid, sessionID)
-	helloResp, _ := EncodeTLVs([]TLV{{Type: TLVSessionID, Value: sid}, {Type: TLVServerNonce, Value: []byte("nonce")}})
+	helloRespRaw, _ := EncodeTLVs([]TLV{{Type: TLVSessionID, Value: sid}, {Type: TLVServerNonce, Value: []byte("nonce")}})
+	helloResp, _ := wrapCoverPayload(helloRespRaw)
 	if err = WriteFrame(conn, &Frame{Header: Header{Magic: Magic, Version: VersionV1, Type: TypeHello, SessionID: sessionID, Seq: 1}, Payload: helloResp}); err != nil {
 		return err
 	}
@@ -163,14 +171,15 @@ func runMockATPServerTCP(conn net.Conn, expectToken string) error {
 	if err != nil {
 		return err
 	}
-	authMap, err := ParseTLVMap(auth.Payload)
+	authMap, err := decodeCoverMap(auth.Payload)
 	if err != nil {
 		return err
 	}
 	if string(authMap[TLVAuthToken]) != expectToken || string(authMap[TLVAuthPassword]) != "secret" {
 		return ErrInvalidControlFrame
 	}
-	authResp, _ := EncodeTLVs([]TLV{{Type: TLVStatus, Value: []byte("ok")}})
+	authRespRaw, _ := EncodeTLVs([]TLV{{Type: TLVStatus, Value: []byte("ok")}})
+	authResp, _ := wrapCoverPayload(authRespRaw)
 	if err = WriteFrame(conn, &Frame{Header: Header{Magic: Magic, Version: VersionV1, Type: TypeAuth, SessionID: sessionID, Seq: 2}, Payload: authResp}); err != nil {
 		return err
 	}
@@ -202,10 +211,18 @@ func runMockATPServerUDP(conn net.Conn, expectToken string) error {
 	if hello.Header.Type != TypeHello {
 		return ErrInvalidControlFrame
 	}
+	helloMap, err := decodeCoverMap(hello.Payload)
+	if err != nil {
+		return err
+	}
+	if string(helloMap[TLVAuthToken]) != expectToken || string(helloMap[TLVAuthPassword]) != "secret" {
+		return ErrInvalidControlFrame
+	}
 	sessionID := uint64(11)
 	sid := make([]byte, 8)
 	putSessionID(sid, sessionID)
-	helloResp, _ := EncodeTLVs([]TLV{{Type: TLVSessionID, Value: sid}, {Type: TLVServerNonce, Value: []byte("nonce")}})
+	helloRespRaw, _ := EncodeTLVs([]TLV{{Type: TLVSessionID, Value: sid}, {Type: TLVServerNonce, Value: []byte("nonce")}})
+	helloResp, _ := wrapCoverPayload(helloRespRaw)
 	if err = WriteFrame(conn, &Frame{Header: Header{Magic: Magic, Version: VersionV1, Type: TypeHello, SessionID: sessionID, Seq: 1}, Payload: helloResp}); err != nil {
 		return err
 	}
@@ -213,14 +230,15 @@ func runMockATPServerUDP(conn net.Conn, expectToken string) error {
 	if err != nil {
 		return err
 	}
-	authMap, err := ParseTLVMap(auth.Payload)
+	authMap, err := decodeCoverMap(auth.Payload)
 	if err != nil {
 		return err
 	}
 	if string(authMap[TLVAuthToken]) != expectToken || string(authMap[TLVAuthPassword]) != "secret" {
 		return ErrInvalidControlFrame
 	}
-	authResp, _ := EncodeTLVs([]TLV{{Type: TLVStatus, Value: []byte("ok")}})
+	authRespRaw, _ := EncodeTLVs([]TLV{{Type: TLVStatus, Value: []byte("ok")}})
+	authResp, _ := wrapCoverPayload(authRespRaw)
 	if err = WriteFrame(conn, &Frame{Header: Header{Magic: Magic, Version: VersionV1, Type: TypeAuth, SessionID: sessionID, Seq: 2}, Payload: authResp}); err != nil {
 		return err
 	}
@@ -252,7 +270,7 @@ func runMockATPResumeAcceptedServer(conn net.Conn, expectTicket string) error {
 	if hello.Header.Type != TypeHello {
 		return ErrInvalidControlFrame
 	}
-	helloMap, err := ParseTLVMap(hello.Payload)
+	helloMap, err := decodeCoverMap(hello.Payload)
 	if err != nil {
 		return err
 	}
@@ -262,11 +280,13 @@ func runMockATPResumeAcceptedServer(conn net.Conn, expectTicket string) error {
 	sessionID := uint64(20)
 	sid := make([]byte, 8)
 	putSessionID(sid, sessionID)
-	helloResp, _ := EncodeTLVs([]TLV{{Type: TLVSessionID, Value: sid}, {Type: TLVServerNonce, Value: []byte("nonce")}, {Type: TLVResumeAccept, Value: []byte{1}}})
+	helloRespRaw, _ := EncodeTLVs([]TLV{{Type: TLVSessionID, Value: sid}, {Type: TLVServerNonce, Value: []byte("nonce")}, {Type: TLVResumeAccept, Value: []byte{1}}})
+	helloResp, _ := wrapCoverPayload(helloRespRaw)
 	if err = WriteFrame(conn, &Frame{Header: Header{Magic: Magic, Version: VersionV1, Type: TypeHello, SessionID: sessionID, Seq: 1}, Payload: helloResp}); err != nil {
 		return err
 	}
-	authResp, _ := EncodeTLVs([]TLV{{Type: TLVStatus, Value: []byte("ok")}, {Type: TLVResumeTicket, Value: []byte("resume-next")}})
+	authRespRaw, _ := EncodeTLVs([]TLV{{Type: TLVStatus, Value: []byte("ok")}, {Type: TLVResumeTicket, Value: []byte("resume-next")}})
+	authResp, _ := wrapCoverPayload(authRespRaw)
 	if err = WriteFrame(conn, &Frame{Header: Header{Magic: Magic, Version: VersionV1, Type: TypeAuth, SessionID: sessionID, Seq: 2}, Payload: authResp}); err != nil {
 		return err
 	}
@@ -282,7 +302,7 @@ func runMockATPResumeFallbackServer(conn net.Conn, expectToken string) error {
 	if hello.Header.Type != TypeHello {
 		return ErrInvalidControlFrame
 	}
-	helloMap, err := ParseTLVMap(hello.Payload)
+	helloMap, err := decodeCoverMap(hello.Payload)
 	if err != nil {
 		return err
 	}
@@ -292,7 +312,8 @@ func runMockATPResumeFallbackServer(conn net.Conn, expectToken string) error {
 	sessionID := uint64(21)
 	sid := make([]byte, 8)
 	putSessionID(sid, sessionID)
-	helloResp, _ := EncodeTLVs([]TLV{{Type: TLVSessionID, Value: sid}, {Type: TLVServerNonce, Value: []byte("nonce")}, {Type: TLVResumeAccept, Value: []byte{0}}})
+	helloRespRaw, _ := EncodeTLVs([]TLV{{Type: TLVSessionID, Value: sid}, {Type: TLVServerNonce, Value: []byte("nonce")}, {Type: TLVResumeAccept, Value: []byte{0}}})
+	helloResp, _ := wrapCoverPayload(helloRespRaw)
 	if err = WriteFrame(conn, &Frame{Header: Header{Magic: Magic, Version: VersionV1, Type: TypeHello, SessionID: sessionID, Seq: 1}, Payload: helloResp}); err != nil {
 		return err
 	}
@@ -300,14 +321,15 @@ func runMockATPResumeFallbackServer(conn net.Conn, expectToken string) error {
 	if err != nil {
 		return err
 	}
-	authMap, err := ParseTLVMap(auth.Payload)
+	authMap, err := decodeCoverMap(auth.Payload)
 	if err != nil {
 		return err
 	}
 	if string(authMap[TLVAuthToken]) != expectToken || string(authMap[TLVAuthPassword]) != "secret" {
 		return ErrInvalidControlFrame
 	}
-	authResp, _ := EncodeTLVs([]TLV{{Type: TLVStatus, Value: []byte("ok")}, {Type: TLVResumeTicket, Value: []byte("resume-fallback-next")}})
+	authRespRaw, _ := EncodeTLVs([]TLV{{Type: TLVStatus, Value: []byte("ok")}, {Type: TLVResumeTicket, Value: []byte("resume-fallback-next")}})
+	authResp, _ := wrapCoverPayload(authRespRaw)
 	if err = WriteFrame(conn, &Frame{Header: Header{Magic: Magic, Version: VersionV1, Type: TypeAuth, SessionID: sessionID, Seq: 2}, Payload: authResp}); err != nil {
 		return err
 	}
@@ -324,4 +346,30 @@ func putSessionID(dst []byte, id uint64) {
 	dst[5] = byte(id >> 16)
 	dst[6] = byte(id >> 8)
 	dst[7] = byte(id)
+}
+
+func decodeCoverMap(payload []byte) (map[uint16][]byte, error) {
+	outer, err := ParseTLVMap(payload)
+	if err != nil {
+		return nil, err
+	}
+	raw := outer[TLVCoverToken]
+	if len(raw) == 0 {
+		return nil, ErrInvalidControlFrame
+	}
+	inner, err := ParseTLVMap(raw)
+	if err != nil {
+		return nil, err
+	}
+	return inner, nil
+}
+
+func wrapCoverPayload(inner []byte) ([]byte, error) {
+	return EncodeTLVs([]TLV{
+		{Type: TLVCoverMode, Value: []byte("h2")},
+		{Type: TLVCoverTS, Value: make([]byte, 8)},
+		{Type: TLVCoverRandom, Value: []byte("0123456789abcdef")},
+		{Type: TLVCoverPadding, Value: []byte("pad")},
+		{Type: TLVCoverToken, Value: inner},
+	})
 }

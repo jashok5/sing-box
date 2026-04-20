@@ -164,6 +164,10 @@ func (h *Inbound) serverHandshake(ctx context.Context, conn net.Conn) (uint64, s
 	if err != nil {
 		return 0, "", err
 	}
+	if len(helloMap[TLVCoverToken]) == 0 {
+		return 0, "", h.writeAndReturnError(conn, 0, 1, CodeBadRequest, "missing cover envelope")
+	}
+	helloMap = normalizedInboundHelloTLVMap(helloMap)
 	if len(helloMap[TLVClientNonce]) == 0 {
 		return 0, "", h.writeAndReturnError(conn, 0, 1, CodeBadRequest, "missing client nonce")
 	}
@@ -178,7 +182,11 @@ func (h *Inbound) serverHandshake(ctx context.Context, conn net.Conn) (uint64, s
 	}
 	sessionBytes := make([]byte, 8)
 	binary.BigEndian.PutUint64(sessionBytes, sessionID)
-	helloPayload, err := EncodeTLVs([]TLV{{Type: TLVSessionID, Value: sessionBytes}, {Type: TLVServerNonce, Value: serverNonce}})
+	coverHelloPayload, err := EncodeTLVs([]TLV{{Type: TLVSessionID, Value: sessionBytes}, {Type: TLVServerNonce, Value: serverNonce}})
+	if err != nil {
+		return 0, "", err
+	}
+	helloPayload, err := buildInboundCoverEnvelope(coverModeByTransport(h.transport), coverHelloPayload)
 	if err != nil {
 		return 0, "", err
 	}
@@ -197,6 +205,10 @@ func (h *Inbound) serverHandshake(ctx context.Context, conn net.Conn) (uint64, s
 	if err != nil {
 		return 0, "", err
 	}
+	if len(authMap[TLVCoverToken]) == 0 {
+		return 0, "", h.writeAndReturnError(conn, sessionID, 2, CodeBadRequest, "missing auth cover envelope")
+	}
+	authMap = normalizedInboundAuthTLVMap(authMap)
 	token := string(authMap[TLVAuthToken])
 	user, ok := h.tokenMap[token]
 	if !ok {
@@ -207,7 +219,11 @@ func (h *Inbound) serverHandshake(ctx context.Context, conn net.Conn) (uint64, s
 			return 0, "", h.writeAndReturnError(conn, sessionID, 2, CodeAuthFailed, "auth password mismatch")
 		}
 	}
-	statusPayload, err := EncodeTLVs([]TLV{{Type: TLVStatus, Value: []byte("ok")}})
+	coverStatusPayload, err := EncodeTLVs([]TLV{{Type: TLVStatus, Value: []byte("ok")}})
+	if err != nil {
+		return 0, "", err
+	}
+	statusPayload, err := buildInboundCoverEnvelope(coverModeByTransport(h.transport), coverStatusPayload)
 	if err != nil {
 		return 0, "", err
 	}
@@ -319,6 +335,65 @@ func (h *Inbound) writeErrorFrame(conn net.Conn, sessionID uint64, seq uint32, c
 func (h *Inbound) writeAndReturnError(conn net.Conn, sessionID uint64, seq uint32, code ErrorCode, reason string) error {
 	_ = h.writeErrorFrame(conn, sessionID, seq, code, reason)
 	return E.New(reason)
+}
+
+func normalizedInboundHelloTLVMap(in map[uint16][]byte) map[uint16][]byte {
+	raw := in[TLVCoverToken]
+	if len(raw) == 0 {
+		return in
+	}
+	decoded, err := ParseTLVMap(raw)
+	if err != nil {
+		return in
+	}
+	if token := decoded[TLVAuthToken]; len(token) > 0 {
+		in[TLVAuthToken] = token
+	}
+	if pass := decoded[TLVAuthPassword]; len(pass) > 0 {
+		in[TLVAuthPassword] = pass
+	}
+	if resume := decoded[TLVResumeReq]; len(resume) > 0 {
+		in[TLVResumeReq] = resume
+	}
+	return in
+}
+
+func normalizedInboundAuthTLVMap(in map[uint16][]byte) map[uint16][]byte {
+	raw := in[TLVCoverToken]
+	if len(raw) == 0 {
+		return in
+	}
+	decoded, err := ParseTLVMap(raw)
+	if err != nil {
+		return in
+	}
+	if token := decoded[TLVAuthToken]; len(token) > 0 {
+		in[TLVAuthToken] = token
+	}
+	if pass := decoded[TLVAuthPassword]; len(pass) > 0 {
+		in[TLVAuthPassword] = pass
+	}
+	return in
+}
+
+func buildInboundCoverEnvelope(mode string, payload []byte) ([]byte, error) {
+	ts := make([]byte, 8)
+	binary.BigEndian.PutUint64(ts, uint64(time.Now().Unix()))
+	random := make([]byte, 16)
+	if _, err := rand.Read(random); err != nil {
+		return nil, err
+	}
+	padding := make([]byte, 32)
+	if _, err := rand.Read(padding); err != nil {
+		return nil, err
+	}
+	return EncodeTLVs([]TLV{
+		{Type: TLVCoverMode, Value: []byte(mode)},
+		{Type: TLVCoverTS, Value: ts},
+		{Type: TLVCoverRandom, Value: random},
+		{Type: TLVCoverPadding, Value: padding},
+		{Type: TLVCoverToken, Value: payload},
+	})
 }
 
 type sessionWriter struct {
