@@ -11,7 +11,7 @@ require (
 	github.com/docker/go-connections v0.5.0
 	github.com/gofrs/uuid/v5 v5.4.0
 	github.com/sagernet/quic-go v0.59.0-sing-box-mod.4
-	github.com/sagernet/sing v0.8.8
+	github.com/sagernet/sing v0.8.9
 	github.com/sagernet/sing-quic v0.6.1
 	github.com/sagernet/sing-shadowsocks v0.2.9
 	github.com/sagernet/sing-shadowsocks2 v0.2.2
