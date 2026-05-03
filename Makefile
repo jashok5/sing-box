@@ -314,23 +314,6 @@ CXX_WINDOWS_AMD64 ?= zig c++ -target x86_64-windows-gnu -O3 -s
 CC_WINDOWS_ARM64 ?= zig cc -target aarch64-windows-gnu -O3 -s
 CXX_WINDOWS_ARM64 ?= zig c++ -target aarch64-windows-gnu -O3 -s
 
-lib_darwin:
-	export GOTOOLCHAIN=local && \
-	go build -buildmode=c-shared -o $(LIB_NAME)-macos-$(GOHOSTARCH).dylib $(MAIN_PARAMS) $(LIB_MAIN)
-
-lib_linux:
-	export GOTOOLCHAIN=local && \
-	go build -buildmode=c-shared -o $(LIB_NAME)-linux-$(GOHOSTARCH).so $(MAIN_PARAMS) $(LIB_MAIN)
-
-lib_my_windows:
-	export GOTOOLCHAIN=local && \
-	go build -buildmode=c-shared -o $(LIB_NAME)-windows-$(GOHOSTARCH).dll $(MAIN_PARAMS) $(LIB_MAIN)
-
-build_lib_cshared:
-	$(MAKE) build_lib_linux
-	$(MAKE) build_lib_windows
-	$(MAKE) build_lib_macos
-
 build_lib_linux:
 	mkdir -p $(LINUX_LIBBOX_OUTPUT_DIR)
 	GOOS=linux GOARCH=amd64 CGO_ENABLED=1 CC="$(CC_LINUX_AMD64)" CXX="$(CXX_LINUX_AMD64)" go build $(PARAMS) -buildmode=c-shared -tags "$(TAGS)" -o $(LINUX_LIBBOX_OUTPUT_DIR)/sing-box-amd64.so ./cmd/libbox_cshared_linux

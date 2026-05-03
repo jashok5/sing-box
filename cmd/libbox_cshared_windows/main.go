@@ -7,6 +7,7 @@ package main
 typedef void (*command_client_connected_cb)(size_t context);
 typedef void (*command_client_disconnected_cb)(size_t context, const char* message);
 typedef void (*command_client_log_cb)(size_t context, int level, const char* message);
+typedef void (*libbox_log_callback)(void* user_data, int level, const char* message);
 
 typedef struct {
 	size_t Context;
@@ -30,6 +31,12 @@ static void call_command_client_disconnected(void* fn, size_t context, const cha
 static void call_command_client_log(void* fn, size_t context, int level, const char* message) {
 	if (fn != NULL) {
 		((command_client_log_cb) fn)(context, level, message);
+	}
+}
+
+static void invoke_log_callback(libbox_log_callback callback, void* user_data, int level, const char* message) {
+	if (callback != NULL) {
+		callback(user_data, level, message);
 	}
 }
 */
@@ -60,6 +67,15 @@ var (
 
 	commandClientOptionsHandles = map[int64]*lb.CommandClientOptions{}
 	commandClientHandles        = map[int64]*lb.CommandClient{}
+
+	lastConfig    string
+	lastConfigMu  sync.RWMutex
+
+	logCallback         C.libbox_log_callback
+	logCallbackUserData unsafe.Pointer
+	logCallbackMu       sync.RWMutex
+	logClient           *lb.CommandClient
+	logClientHandle     int64
 )
 
 type emptyStringIterator struct{}
@@ -238,7 +254,7 @@ func (p *csharedPlatformInterface) SendNotification(notification *lb.Notificatio
 }
 
 func (p *csharedPlatformInterface) DisablePlatformInterface() bool {
-	return false
+	return true
 }
 
 func inferInterfaceType(name string) int32 {
@@ -370,6 +386,45 @@ func (h *csharedCommandServerHandler) SetSystemProxyEnabled(enabled bool) error 
 func (h *csharedCommandServerHandler) WriteDebugMessage(message string) {
 }
 
+type csharedLogCallbackHandler struct{}
+
+func (h *csharedLogCallbackHandler) Connected() {}
+
+func (h *csharedLogCallbackHandler) Disconnected(message string) {}
+
+func (h *csharedLogCallbackHandler) SetDefaultLogLevel(level int32) {}
+
+func (h *csharedLogCallbackHandler) ClearLogs() {}
+
+func (h *csharedLogCallbackHandler) WriteLogs(messageList lb.LogIterator) {
+	logCallbackMu.RLock()
+	callback := logCallback
+	userData := logCallbackUserData
+	logCallbackMu.RUnlock()
+	if callback == nil || messageList == nil {
+		return
+	}
+	for messageList.HasNext() {
+		next := messageList.Next()
+		if next == nil {
+			continue
+		}
+		cMessage := C.CString(next.Message)
+		C.invoke_log_callback(callback, userData, C.int(next.Level), cMessage)
+		C.free(unsafe.Pointer(cMessage))
+	}
+}
+
+func (h *csharedLogCallbackHandler) WriteStatus(message *lb.StatusMessage) {}
+
+func (h *csharedLogCallbackHandler) WriteGroups(message lb.OutboundGroupIterator) {}
+
+func (h *csharedLogCallbackHandler) InitializeClashMode(modeList lb.StringIterator, currentMode string) {}
+
+func (h *csharedLogCallbackHandler) UpdateClashMode(newMode string) {}
+
+func (h *csharedLogCallbackHandler) WriteConnectionEvents(events *lb.ConnectionEvents) {}
+
 func init() {
 	nextHandle.Store(1000)
 }
@@ -420,6 +475,69 @@ func getCommandClient(handle C.longlong) (*lb.CommandClient, error) {
 	return value, nil
 }
 
+func connectLogClient() {
+	logCallbackMu.RLock()
+	callback := logCallback
+	logCallbackMu.RUnlock()
+	if callback == nil || commandServer == nil {
+		return
+	}
+
+	disconnectLogClientLocked()
+
+	options := &lb.CommandClientOptions{}
+	options.AddCommand(int32(lb.CommandLog))
+	client := lb.NewCommandClient(&csharedLogCallbackHandler{}, options)
+	handle := nextID()
+	handleMu.Lock()
+	commandClientHandles[handle] = client
+	handleMu.Unlock()
+	logClient = client
+	logClientHandle = handle
+	go func() {
+		_ = client.Connect()
+	}()
+}
+
+func disconnectLogClientLocked() {
+	if logClient != nil {
+		_ = logClient.Disconnect()
+		handleMu.Lock()
+		delete(commandClientHandles, logClientHandle)
+		handleMu.Unlock()
+		logClient = nil
+	}
+}
+
+func disconnectLogClient() {
+	disconnectLogClientLocked()
+}
+
+func startService(configStr string) error {
+	handler := &csharedCommandServerHandler{}
+	platformInterface := &csharedPlatformInterface{}
+	server, err := lb.NewCommandServer(handler, platformInterface)
+	if err != nil {
+		return err
+	}
+
+	err = server.Start()
+	if err != nil {
+		server.Close()
+		return err
+	}
+
+	err = server.StartOrReloadService(configStr, &lb.OverrideOptions{})
+	if err != nil {
+		server.Close()
+		return err
+	}
+
+	commandServer = server
+	connectLogClient()
+	return nil
+}
+
 //export libbox_run
 func libbox_run(configContent *C.char) (ret *C.char) {
 	defer func() {
@@ -436,27 +554,27 @@ func libbox_run(configContent *C.char) (ret *C.char) {
 	}
 
 	configStr := C.GoString(configContent)
-	handler := &csharedCommandServerHandler{}
-	platformInterface := &csharedPlatformInterface{}
-	server, err := lb.NewCommandServer(handler, platformInterface)
+
+	lastConfigMu.Lock()
+	lastConfig = configStr
+	lastConfigMu.Unlock()
+
+	err := startService(configStr)
 	if err != nil {
 		return C.CString(err.Error())
 	}
-
-	err = server.Start()
-	if err != nil {
-		server.Close()
-		return C.CString(err.Error())
-	}
-
-	err = server.StartOrReloadService(configStr, &lb.OverrideOptions{})
-	if err != nil {
-		server.Close()
-		return C.CString(err.Error())
-	}
-
-	commandServer = server
 	return nil
+}
+
+//export libbox_run_from_path
+func libbox_run_from_path(configPath *C.char) *C.char {
+	configBytes, err := os.ReadFile(C.GoString(configPath))
+	if err != nil {
+		return C.CString(err.Error())
+	}
+	configContent := C.CString(string(configBytes))
+	defer C.free(unsafe.Pointer(configContent))
+	return libbox_run(configContent)
 }
 
 //export libbox_stop
@@ -468,6 +586,8 @@ func libbox_stop() *C.char {
 		return C.CString("service not running")
 	}
 
+	disconnectLogClient()
+
 	err := commandServer.CloseService()
 	commandServer.Close()
 	commandServer = nil
@@ -476,6 +596,84 @@ func libbox_stop() *C.char {
 		return C.CString(err.Error())
 	}
 	return nil
+}
+
+//export libbox_reload
+func libbox_reload(configContent *C.char) (ret *C.char) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			ret = C.CString(fmt.Sprintf("panic in libbox_reload: %v\n%s", recovered, string(debug.Stack())))
+		}
+	}()
+
+	instanceMutex.Lock()
+	defer instanceMutex.Unlock()
+
+	if commandServer == nil {
+		return C.CString("service not running")
+	}
+
+	configStr := C.GoString(configContent)
+
+	lastConfigMu.Lock()
+	lastConfig = configStr
+	lastConfigMu.Unlock()
+
+	disconnectLogClientLocked()
+
+	err := commandServer.StartOrReloadService(configStr, &lb.OverrideOptions{})
+	if err != nil {
+		return C.CString(err.Error())
+	}
+
+	connectLogClient()
+	return nil
+}
+
+//export libbox_start_or_reload
+func libbox_start_or_reload(configContent *C.char) (ret *C.char) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			ret = C.CString(fmt.Sprintf("panic in libbox_start_or_reload: %v\n%s", recovered, string(debug.Stack())))
+		}
+	}()
+
+	instanceMutex.Lock()
+	defer instanceMutex.Unlock()
+
+	configStr := C.GoString(configContent)
+
+	lastConfigMu.Lock()
+	lastConfig = configStr
+	lastConfigMu.Unlock()
+
+	if commandServer != nil {
+		disconnectLogClientLocked()
+
+		err := commandServer.StartOrReloadService(configStr, &lb.OverrideOptions{})
+		if err != nil {
+			return C.CString(err.Error())
+		}
+
+		connectLogClient()
+		return nil
+	}
+
+	err := startService(configStr)
+	if err != nil {
+		return C.CString(err.Error())
+	}
+	return nil
+}
+
+//export libbox_is_running
+func libbox_is_running() C.int {
+	instanceMutex.Lock()
+	defer instanceMutex.Unlock()
+	if commandServer == nil {
+		return 0
+	}
+	return 1
 }
 
 //export libbox_free_string
@@ -491,6 +689,34 @@ func libbox_setup(optionsJSON *C.char) *C.char {
 		return cError(err)
 	}
 	return cError(lb.Setup(&options))
+}
+
+//export libbox_set_paths
+func libbox_set_paths(basePathRaw *C.char, workingPathRaw *C.char, tempPathRaw *C.char) *C.char {
+	cJSON := C.CString(fmt.Sprintf(
+		`{"BasePath":%q,"WorkingPath":%q,"TempPath":%q}`,
+		C.GoString(basePathRaw), C.GoString(workingPathRaw), C.GoString(tempPathRaw),
+	))
+	defer C.free(unsafe.Pointer(cJSON))
+	return libbox_setup(cJSON)
+}
+
+//export libbox_set_log_callback
+func libbox_set_log_callback(callback C.libbox_log_callback, userData unsafe.Pointer) {
+	logCallbackMu.Lock()
+	hadCallback := logCallback != nil
+	logCallback = callback
+	logCallbackUserData = userData
+	logCallbackMu.Unlock()
+
+	instanceMutex.Lock()
+	defer instanceMutex.Unlock()
+
+	if callback == nil && hadCallback {
+		disconnectLogClientLocked()
+	} else if callback != nil && commandServer != nil {
+		connectLogClient()
+	}
 }
 
 //export libbox_set_locale

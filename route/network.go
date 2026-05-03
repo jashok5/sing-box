@@ -104,7 +104,7 @@ func NewNetworkManager(ctx context.Context, logger logger.ContextLogger, options
 			return nil, E.New("`auto_detect_interface` is required by `default_network_strategy`")
 		}
 	}
-	usePlatformDefaultInterfaceMonitor := nm.platformInterface != nil
+	usePlatformDefaultInterfaceMonitor := nm.platformInterface != nil && nm.platformInterface.UsePlatformDefaultInterfaceMonitor()
 	enforceInterfaceMonitor := options.AutoDetectInterface
 	if !usePlatformDefaultInterfaceMonitor {
 		networkMonitor, err := tun.NewNetworkUpdateMonitor(logger)
