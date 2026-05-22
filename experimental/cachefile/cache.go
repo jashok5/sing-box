@@ -12,7 +12,6 @@ import (
 	"github.com/sagernet/bbolt"
 	bboltErrors "github.com/sagernet/bbolt/errors"
 	"github.com/sagernet/sing-box/adapter"
-	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
@@ -35,8 +34,6 @@ var (
 
 	cacheIDDefault = []byte("default")
 )
-
-var ErrStartTimeout = errors.New("cache init timeout")
 
 var _ adapter.CacheFile = (*CacheFile)(nil)
 
@@ -110,43 +107,28 @@ func (c *CacheFile) Start(stage adapter.StartStage) error {
 		return nil
 	}
 	const fileMode = 0o666
-	options := bbolt.Options{Timeout: 2 * time.Second}
+	options := bbolt.Options{Timeout: time.Second}
 	var (
 		db  *bbolt.DB
 		err error
 	)
-	startTime := time.Now()
-	for i := 0; i < 10; i++ {
-		attemptStart := time.Now()
+	for range 10 {
 		db, err = bbolt.Open(c.path, fileMode, &options)
-		elapsed := time.Since(attemptStart)
 		if err == nil {
-			if i > 0 {
-				log.Info("cache-file: db opened on attempt ", i+1, " (", elapsed.Round(time.Millisecond), ")")
-			}
 			break
 		}
 		if errors.Is(err, bboltErrors.ErrTimeout) {
-			if i == 0 {
-				log.Warn("cache-file: first open attempt timed out after ", elapsed.Round(time.Millisecond), ", retrying with backoff")
-			}
-			time.Sleep(time.Duration(50*(i+1)) * time.Millisecond)
 			continue
 		}
 		if E.IsMulti(err, bboltErrors.ErrInvalid, bboltErrors.ErrChecksum, bboltErrors.ErrVersionMismatch) {
-			log.Warn("cache-file: corrupted db detected, removing and retrying")
 			rmErr := os.Remove(c.path)
 			if rmErr != nil {
 				return err
 			}
 		}
-		time.Sleep(time.Duration(50*(i+1)) * time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 	}
 	if err != nil {
-		log.Error("cache-file: start failed after ", time.Since(startTime).Round(time.Millisecond), ": ", err)
-		if errors.Is(err, bboltErrors.ErrTimeout) {
-			return ErrStartTimeout
-		}
 		return err
 	}
 	err = filemanager.Chown(c.ctx, c.path)
@@ -223,7 +205,7 @@ func (c *CacheFile) resetDB() {
 	defer c.resetAccess.Unlock()
 	c.DB.Close()
 	os.Remove(c.path)
-	db, err := bbolt.Open(c.path, 0o666, &bbolt.Options{Timeout: 2 * time.Second})
+	db, err := bbolt.Open(c.path, 0o666, &bbolt.Options{Timeout: time.Second})
 	if err == nil {
 		_ = filemanager.Chown(c.ctx, c.path)
 		c.DB = db
