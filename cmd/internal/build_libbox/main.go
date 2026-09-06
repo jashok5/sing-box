@@ -20,7 +20,7 @@ var (
 	debugEnabled bool
 	target       string
 	platform     string
-	output       string
+	outputName   string
 	// withTailscale bool
 )
 
@@ -28,7 +28,7 @@ func init() {
 	flag.BoolVar(&debugEnabled, "debug", false, "enable debug")
 	flag.StringVar(&target, "target", "android", "target platform")
 	flag.StringVar(&platform, "platform", "", "specify platform")
-	flag.StringVar(&output, "output", "", "set output file name")
+	flag.StringVar(&outputName, "output", "Libbox.xcframework", "output path")
 	// flag.BoolVar(&withTailscale, "with-tailscale", false, "build tailscale for iOS and tvOS")
 }
 
@@ -62,10 +62,10 @@ func init() {
 	if err != nil {
 		currentTag = "unknown"
 	}
-	sharedFlags = append(sharedFlags, "-ldflags", "-X github.com/sagernet/sing-box/constant.Version="+currentTag+" -X internal/godebug.defaultGODEBUG=multipathtcp=0 -s -w -buildid=  -checklinkname=0")
-	debugFlags = append(debugFlags, "-ldflags", "-X github.com/sagernet/sing-box/constant.Version="+currentTag+" -X internal/godebug.defaultGODEBUG=multipathtcp=0 -checklinkname=0")
+	sharedFlags = append(sharedFlags, "-ldflags", build_shared.LinkerFlags(currentTag, false))
+	debugFlags = append(debugFlags, "-ldflags", build_shared.LinkerFlags(currentTag, true))
 
-	// backup(full): sharedTags = append(sharedTags, "with_gvisor", "with_quic", "with_wireguard", "with_utls", "with_naive_outbound", "with_clash_api", "badlinkname", "tfogo_checklinkname0", "with_shadowsocksr")
+	// backup(full): sharedTags = append(sharedTags, "with_gvisor", "with_quic", "with_wireguard", "with_utls", "with_naive_outbound", "with_clash_api", "with_usbip", "with_openvpn", "with_openconnect", "badlinkname", "tfogo_checklinkname0", "with_shadowsocksr")
 	sharedTags = append(sharedTags, "with_gvisor", "with_quic", "with_utls", "with_clash_api", "badlinkname", "tfogo_checklinkname0", "with_shadowsocksr")
 	darwinTags = append(darwinTags, "with_dhcp", "grpcnotrace")
 	// backup(full): sharedTags = append(sharedTags, "with_tailscale", "ts_omit_logtail", "ts_omit_ssh", "ts_omit_drive", "ts_omit_taildrop", "ts_omit_webclient", "ts_omit_doctor", "ts_omit_capture", "ts_omit_kube", "ts_omit_aws", "ts_omit_synology", "ts_omit_bird")
@@ -166,14 +166,14 @@ func buildAndroid() {
 
 	bindTarget := getAndroidBindTarget()
 
-	// Build main variant (SDK 23)
+	// Build main variant (SDK 24)
 	mainTags := append([]string{}, sharedTags...)
 	// mainTags = append(mainTags, memcTags...)
 	if debugEnabled {
 		mainTags = append(mainTags, debugTags...)
 	}
 	buildAndroidVariant(AndroidBuildConfig{
-		AndroidAPI: 23,
+		AndroidAPI: 24,
 		OutputName: "libbox.aar",
 		Tags:       mainTags,
 	}, bindTarget)
@@ -192,11 +192,6 @@ func buildAndroid() {
 }
 
 func buildApple() {
-	outputName := "Libbox.xcframework"
-	if output != "" {
-		outputName = output
-	}
-
 	var bindTarget string
 	if platform != "" {
 		bindTarget = platform
@@ -209,10 +204,12 @@ func buildApple() {
 	args := []string{
 		"bind",
 		"-v",
-		"-o", outputName,
 		"-target", bindTarget,
 		"-libname=box",
 		"-tags-not-macos=with_low_memory",
+		"-iosversion=15.0",
+		"-macosversion=13.0",
+		"-tvosversion=17.0",
 	}
 	//if !withTailscale {
 	//	args = append(args, "-tags-macos="+strings.Join(memcTags, ","))
@@ -243,7 +240,7 @@ func buildApple() {
 		log.Fatal(err)
 	}
 
-	if output == "" {
+	if outputName == "" {
 		copyPath := filepath.Join("..", "sing-box-for-apple")
 		if rw.IsDir(copyPath) {
 			targetDir := filepath.Join(copyPath, outputName)

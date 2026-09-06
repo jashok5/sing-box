@@ -6,8 +6,6 @@ import (
 	"encoding/binary"
 	"io"
 	"net"
-	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -18,7 +16,6 @@ import (
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing/common"
-	"github.com/sagernet/sing/common/buf"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
@@ -123,6 +120,10 @@ func (h *Inbound) Close() error {
 	return common.Close(h.listener, h.tlsConfig, h.quicServer)
 }
 
+func (h *Inbound) NewConnection(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
+	h.NewConnectionEx(ctx, conn, metadata, onClose)
+}
+
 func (h *Inbound) NewConnectionEx(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
 	if h.transport == "tls" {
 		tlsConn, err := tls.ServerHandshake(ctx, conn, h.tlsConfig)
@@ -167,7 +168,7 @@ func (h *Inbound) serverHandshake(ctx context.Context, conn net.Conn) (uint64, s
 	if len(helloMap[TLVCoverToken]) == 0 {
 		return 0, "", h.writeAndReturnError(conn, 0, 1, CodeBadRequest, "missing cover envelope")
 	}
-	helloMap = normalizedInboundHelloTLVMap(helloMap)
+	helloMap = unwrapCoverTokenMap(helloMap, TLVAuthToken, TLVAuthPassword, TLVResumeReq)
 	if len(helloMap[TLVClientNonce]) == 0 {
 		return 0, "", h.writeAndReturnError(conn, 0, 1, CodeBadRequest, "missing client nonce")
 	}
@@ -186,7 +187,7 @@ func (h *Inbound) serverHandshake(ctx context.Context, conn net.Conn) (uint64, s
 	if err != nil {
 		return 0, "", err
 	}
-	helloPayload, err := buildInboundCoverEnvelope(coverModeByTransport(h.transport), coverHelloPayload)
+	helloPayload, err := buildCoverEnvelope(coverModeByTransport(h.transport), coverHelloPayload)
 	if err != nil {
 		return 0, "", err
 	}
@@ -208,7 +209,7 @@ func (h *Inbound) serverHandshake(ctx context.Context, conn net.Conn) (uint64, s
 	if len(authMap[TLVCoverToken]) == 0 {
 		return 0, "", h.writeAndReturnError(conn, sessionID, 2, CodeBadRequest, "missing auth cover envelope")
 	}
-	authMap = normalizedInboundAuthTLVMap(authMap)
+	authMap = unwrapCoverTokenMap(authMap, TLVAuthToken, TLVAuthPassword)
 	token := string(authMap[TLVAuthToken])
 	user, ok := h.tokenMap[token]
 	if !ok {
@@ -223,7 +224,7 @@ func (h *Inbound) serverHandshake(ctx context.Context, conn net.Conn) (uint64, s
 	if err != nil {
 		return 0, "", err
 	}
-	statusPayload, err := buildInboundCoverEnvelope(coverModeByTransport(h.transport), coverStatusPayload)
+	statusPayload, err := buildCoverEnvelope(coverModeByTransport(h.transport), coverStatusPayload)
 	if err != nil {
 		return 0, "", err
 	}
@@ -236,13 +237,10 @@ func (h *Inbound) serverHandshake(ctx context.Context, conn net.Conn) (uint64, s
 func (h *Inbound) serveSession(ctx context.Context, conn net.Conn, sessionID uint64, baseMetadata adapter.InboundContext, user string, onClose N.CloseHandlerFunc) error {
 	w := &sessionWriter{conn: conn, sessionID: sessionID}
 	streams := make(map[uint32]streamEndpoint)
-	var streamsMu sync.Mutex
 	defer func() {
-		streamsMu.Lock()
 		for _, s := range streams {
 			_ = s.Close()
 		}
-		streamsMu.Unlock()
 		_ = conn.Close()
 	}()
 
@@ -283,34 +281,26 @@ func (h *Inbound) serveSession(ctx context.Context, conn net.Conn, sessionID uin
 			streamCtx := log.ContextWithNewID(ctx)
 			if req.Network == NetworkUDP {
 				pc := newATPDatagramConn(frame.Header.StreamID, destination, w)
-				streamsMu.Lock()
 				streams[frame.Header.StreamID] = pc
-				streamsMu.Unlock()
 				h.router.RoutePacketConnectionEx(streamCtx, pc, metadata, onClose)
 				h.logger.InfoContext(streamCtx, "ATP inbound UDP to ", destination)
 			} else {
 				tc := newATPStreamConn(frame.Header.StreamID, conn, w)
-				streamsMu.Lock()
 				streams[frame.Header.StreamID] = tc
-				streamsMu.Unlock()
 				h.router.RouteConnectionEx(streamCtx, tc, metadata, onClose)
 				h.logger.InfoContext(streamCtx, "ATP inbound TCP to ", destination)
 			}
 		case TypeData, TypeDatagram:
-			streamsMu.Lock()
 			s, ok := streams[frame.Header.StreamID]
-			streamsMu.Unlock()
 			if !ok {
 				continue
 			}
 			s.Push(frame)
 		case TypeCloseStream:
-			streamsMu.Lock()
 			s, ok := streams[frame.Header.StreamID]
 			if ok {
 				delete(streams, frame.Header.StreamID)
 			}
-			streamsMu.Unlock()
 			if ok {
 				_ = s.Close()
 			}
@@ -336,214 +326,6 @@ func (h *Inbound) writeAndReturnError(conn net.Conn, sessionID uint64, seq uint3
 	_ = h.writeErrorFrame(conn, sessionID, seq, code, reason)
 	return E.New(reason)
 }
-
-func normalizedInboundHelloTLVMap(in map[uint16][]byte) map[uint16][]byte {
-	raw := in[TLVCoverToken]
-	if len(raw) == 0 {
-		return in
-	}
-	decoded, err := ParseTLVMap(raw)
-	if err != nil {
-		return in
-	}
-	if token := decoded[TLVAuthToken]; len(token) > 0 {
-		in[TLVAuthToken] = token
-	}
-	if pass := decoded[TLVAuthPassword]; len(pass) > 0 {
-		in[TLVAuthPassword] = pass
-	}
-	if resume := decoded[TLVResumeReq]; len(resume) > 0 {
-		in[TLVResumeReq] = resume
-	}
-	return in
-}
-
-func normalizedInboundAuthTLVMap(in map[uint16][]byte) map[uint16][]byte {
-	raw := in[TLVCoverToken]
-	if len(raw) == 0 {
-		return in
-	}
-	decoded, err := ParseTLVMap(raw)
-	if err != nil {
-		return in
-	}
-	if token := decoded[TLVAuthToken]; len(token) > 0 {
-		in[TLVAuthToken] = token
-	}
-	if pass := decoded[TLVAuthPassword]; len(pass) > 0 {
-		in[TLVAuthPassword] = pass
-	}
-	return in
-}
-
-func buildInboundCoverEnvelope(mode string, payload []byte) ([]byte, error) {
-	ts := make([]byte, 8)
-	binary.BigEndian.PutUint64(ts, uint64(time.Now().Unix()))
-	random := make([]byte, 16)
-	if _, err := rand.Read(random); err != nil {
-		return nil, err
-	}
-	padding := make([]byte, 32)
-	if _, err := rand.Read(padding); err != nil {
-		return nil, err
-	}
-	return EncodeTLVs([]TLV{
-		{Type: TLVCoverMode, Value: []byte(mode)},
-		{Type: TLVCoverTS, Value: ts},
-		{Type: TLVCoverRandom, Value: random},
-		{Type: TLVCoverPadding, Value: padding},
-		{Type: TLVCoverToken, Value: payload},
-	})
-}
-
-type sessionWriter struct {
-	mu        sync.Mutex
-	conn      net.Conn
-	sessionID uint64
-	seq       atomic.Uint32
-}
-
-func (w *sessionWriter) write(streamID uint32, frameType uint8, payload []byte) error {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	if payload != nil {
-		payload = append([]byte(nil), payload...)
-	}
-	return WriteFrame(w.conn, &Frame{Header: Header{Magic: Magic, Version: VersionV1, Type: frameType, SessionID: w.sessionID, StreamID: streamID, Seq: w.seq.Add(1)}, Payload: payload})
-}
-
-type streamEndpoint interface {
-	Push(frame *Frame)
-	Close() error
-}
-
-type atpStreamConn struct {
-	streamID uint32
-	conn     net.Conn
-	writer   *sessionWriter
-	readCh   chan []byte
-	closeCh  chan struct{}
-	closeMux sync.Once
-	readBuf  []byte
-}
-
-func newATPStreamConn(streamID uint32, conn net.Conn, writer *sessionWriter) *atpStreamConn {
-	return &atpStreamConn{streamID: streamID, conn: conn, writer: writer, readCh: make(chan []byte, 16), closeCh: make(chan struct{})}
-}
-
-func (c *atpStreamConn) Push(frame *Frame) {
-	if frame.Header.Type != TypeData {
-		return
-	}
-	data := append([]byte(nil), frame.Payload...)
-	select {
-	case c.readCh <- data:
-	case <-c.closeCh:
-	}
-}
-
-func (c *atpStreamConn) Read(p []byte) (int, error) {
-	for len(c.readBuf) == 0 {
-		select {
-		case data, ok := <-c.readCh:
-			if !ok {
-				return 0, io.EOF
-			}
-			c.readBuf = data
-		case <-c.closeCh:
-			return 0, io.EOF
-		}
-	}
-	n := copy(p, c.readBuf)
-	c.readBuf = c.readBuf[n:]
-	return n, nil
-}
-
-func (c *atpStreamConn) Write(p []byte) (int, error) {
-	if err := c.writer.write(c.streamID, TypeData, p); err != nil {
-		return 0, err
-	}
-	return len(p), nil
-}
-
-func (c *atpStreamConn) Close() error {
-	c.closeMux.Do(func() {
-		_ = c.writer.write(c.streamID, TypeCloseStream, nil)
-		close(c.closeCh)
-		close(c.readCh)
-	})
-	return nil
-}
-
-func (c *atpStreamConn) LocalAddr() net.Addr { return c.conn.LocalAddr() }
-
-func (c *atpStreamConn) RemoteAddr() net.Addr { return c.conn.RemoteAddr() }
-
-func (c *atpStreamConn) SetDeadline(t time.Time) error { return nil }
-
-func (c *atpStreamConn) SetReadDeadline(t time.Time) error { return nil }
-
-func (c *atpStreamConn) SetWriteDeadline(t time.Time) error { return nil }
-
-type atpDatagramConn struct {
-	streamID    uint32
-	destination M.Socksaddr
-	conn        net.Conn
-	writer      *sessionWriter
-	readCh      chan []byte
-	closeCh     chan struct{}
-	closeMux    sync.Once
-}
-
-func newATPDatagramConn(streamID uint32, destination M.Socksaddr, writer *sessionWriter) *atpDatagramConn {
-	return &atpDatagramConn{streamID: streamID, destination: destination, conn: writer.conn, writer: writer, readCh: make(chan []byte, 64), closeCh: make(chan struct{})}
-}
-
-func (c *atpDatagramConn) Push(frame *Frame) {
-	if frame.Header.Type != TypeDatagram {
-		return
-	}
-	data := append([]byte(nil), frame.Payload...)
-	select {
-	case c.readCh <- data:
-	case <-c.closeCh:
-	}
-}
-
-func (c *atpDatagramConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
-	select {
-	case data, ok := <-c.readCh:
-		if !ok {
-			return M.Socksaddr{}, io.EOF
-		}
-		_, _ = buffer.Write(data)
-		return c.destination, nil
-	case <-c.closeCh:
-		return M.Socksaddr{}, io.EOF
-	}
-}
-
-func (c *atpDatagramConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
-	defer buffer.Release()
-	return c.writer.write(c.streamID, TypeDatagram, buffer.Bytes())
-}
-
-func (c *atpDatagramConn) Close() error {
-	c.closeMux.Do(func() {
-		_ = c.writer.write(c.streamID, TypeCloseStream, nil)
-		close(c.closeCh)
-		close(c.readCh)
-	})
-	return nil
-}
-
-func (c *atpDatagramConn) LocalAddr() net.Addr { return c.conn.LocalAddr() }
-
-func (c *atpDatagramConn) SetDeadline(t time.Time) error { return nil }
-
-func (c *atpDatagramConn) SetReadDeadline(t time.Time) error { return nil }
-
-func (c *atpDatagramConn) SetWriteDeadline(t time.Time) error { return nil }
 
 func newSessionID() (uint64, error) {
 	b := make([]byte, 8)

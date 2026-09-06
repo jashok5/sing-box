@@ -365,11 +365,5 @@ func decodeCoverMap(payload []byte) (map[uint16][]byte, error) {
 }
 
 func wrapCoverPayload(inner []byte) ([]byte, error) {
-	return EncodeTLVs([]TLV{
-		{Type: TLVCoverMode, Value: []byte("h2")},
-		{Type: TLVCoverTS, Value: make([]byte, 8)},
-		{Type: TLVCoverRandom, Value: []byte("0123456789abcdef")},
-		{Type: TLVCoverPadding, Value: []byte("pad")},
-		{Type: TLVCoverToken, Value: inner},
-	})
+	return buildCoverEnvelope("h2", inner)
 }

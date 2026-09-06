@@ -44,7 +44,7 @@ func (h *Inbound) serveQUICConn(conn *quic.Conn) {
 		if err != nil {
 			return
 		}
-		go func() {
+		go func(stream *quic.Stream) {
 			wrapped := &quicStreamConn{Conn: conn, Stream: stream}
 			metadataIn := adapter.InboundContext{
 				Source:            M.SocksaddrFromNet(conn.RemoteAddr()),
@@ -52,7 +52,7 @@ func (h *Inbound) serveQUICConn(conn *quic.Conn) {
 				Network:           N.NetworkTCP,
 			}
 			h.NewConnectionEx(conn.Context(), wrapped, metadataIn, nil)
-		}()
+		}(stream)
 	}
 }
 

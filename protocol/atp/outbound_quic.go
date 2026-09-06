@@ -9,7 +9,6 @@ import (
 
 	"github.com/sagernet/quic-go"
 	sQUIC "github.com/sagernet/sing-quic"
-	"github.com/sagernet/sing/common/bufio"
 	N "github.com/sagernet/sing/common/network"
 )
 
@@ -18,11 +17,15 @@ func (o *Outbound) newQUICSessionConn(ctx context.Context, resumeTicket string) 
 	if err != nil {
 		return nil, "", err
 	}
-	quicConn, err := sQUIC.DialEarly(ctx, bufio.NewUnbindPacketConn(udpConn), o.serverAddr.UDPAddr(), o.tlsConfig, nil)
+	quicConn, err := sQUIC.DialEarly(ctx, udpConn, o.tlsConfig, nil)
 	if err != nil {
 		_ = udpConn.Close()
 		return nil, "", err
 	}
+	go func() {
+		<-quicConn.Context().Done()
+		_ = udpConn.Close()
+	}()
 	stream, err := quicConn.OpenStreamSync(ctx)
 	if err != nil {
 		_ = quicConn.CloseWithError(0, "")
