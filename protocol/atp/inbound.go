@@ -101,7 +101,7 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 	return h, nil
 }
 
-func (h *Inbound) Start(stage adapter.StartStage) error {
+func (h *Inbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage != adapter.StartStateStart {
 		return nil
 	}
@@ -109,11 +109,25 @@ func (h *Inbound) Start(stage adapter.StartStage) error {
 		if err := h.tlsConfig.Start(); err != nil {
 			return err
 		}
+		scope.Add(h.tlsConfig.Close)
 	}
 	if h.transport == "quic" {
-		return h.startQUIC()
+		if err := h.startQUIC(); err != nil {
+			return err
+		}
+		scope.Add(func() error {
+			if h.quicServer == nil {
+				return nil
+			}
+			return h.quicServer.Close()
+		})
+		return nil
 	}
-	return h.listener.Start()
+	if err := h.listener.Start(); err != nil {
+		return err
+	}
+	scope.Add(h.listener.Close)
+	return nil
 }
 
 func (h *Inbound) Close() error {
