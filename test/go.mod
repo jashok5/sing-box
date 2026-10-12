@@ -12,7 +12,7 @@ require (
 	github.com/gofrs/uuid/v5 v5.5.1
 	github.com/sagernet/quic-go v0.61.0-sing-box-mod.9
 	github.com/sagernet/sing v0.9.7-0.20260929150544-0ad23b637bd4
-	github.com/sagernet/sing-quic v0.7.2-0.20260929204512-e702a73535d5
+	github.com/sagernet/sing-quic v0.7.2-0.20261002084117-75c3ac4fa12b
 	github.com/sagernet/sing-shadowsocks v0.2.9
 	github.com/sagernet/sing-shadowsocks2 v0.2.2
 	github.com/spyzhov/ajson v0.9.4

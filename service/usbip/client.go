@@ -70,10 +70,3 @@ func (s *ClientService) References() []string {
 	}
 	return []string{s.detour}
 }
-
-func (s *ClientService) References() []string {
-	if s.detour == "" {
-		return nil
-	}
-	return []string{s.detour}
-}
