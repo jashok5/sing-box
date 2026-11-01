@@ -304,16 +304,16 @@ update:
 build_all_platform: build_linux_amd64 build_linux_arm64 build_windows_amd64 build_windows_arm64 build_darwin_amd64 build_darwin_arm64
 
 build_linux_amd64:
-	GOOS=linux GOARCH=amd64 GOAMD64=v1 go build $(MAIN_PARAMS) -o sing-box_linux_amd64 $(MAIN)
+	go run ./cmd/internal/build_boxdd -target=linux/amd64 -output=sing-box-amd64-daemon
 
 build_linux_arm64:
-	GOOS=linux GOARCH=arm64 go build $(MAIN_PARAMS) -o sing-box_linux_arm64 $(MAIN)
+	go run ./cmd/internal/build_boxdd -target=linux/arm64 -output=sing-box-arm64-daemon
 
 build_windows_amd64:
-	GOOS=windows GOARCH=amd64 GOAMD64=v1 go build $(MAIN_PARAMS) -o sing-box_windows_amd64.exe $(MAIN)
+	go run ./cmd/internal/build_boxdd -target=windows/amd64 -output=sing-box-amd64-daemon.exe
 
 build_windows_arm64:
-	GOOS=windows GOARCH=arm64 go build $(MAIN_PARAMS) -o sing-box_windows_arm64.exe $(MAIN)
+	go run ./cmd/internal/build_boxdd -target=windows/arm64 -output=sing-box-arm64-daemon.exe
 
 build_darwin_amd64:
 	GOOS=darwin GOARCH=amd64 GOAMD64=v1 go build $(MAIN_PARAMS) -o sing-box_darwin_amd64 $(MAIN)
