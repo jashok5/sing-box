@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -25,7 +24,6 @@ type windowsWorkerParent struct {
 	processImage   windows.Handle
 	executable     windows.Handle
 	executablePath string
-	signer         []byte
 	userID         string
 	sessionID      uint32
 	pid            uint32
@@ -140,17 +138,6 @@ func prepareWorkerParent(parentProcessID uint32) (workerParent, error) {
 	if err != nil {
 		return nil, err
 	}
-	workerSigner, err := authenticodeSigner(workerFinalPath, workerExecutable)
-	if err != nil {
-		return nil, err
-	}
-	parentSigner, err := authenticodeSigner(parentFinalPath, parentImage)
-	if err != nil {
-		return nil, err
-	}
-	if !bytes.Equal(workerSigner, parentSigner) {
-		return nil, E.New("worker and application have different signing certificates")
-	}
 	parentCreationTime, err := processCreationTime(parentProcess)
 	if err != nil {
 		return nil, err
@@ -174,7 +161,6 @@ func prepareWorkerParent(parentProcessID uint32) (workerParent, error) {
 		processImage:   parentImage,
 		executable:     workerExecutable,
 		executablePath: workerFinalPath,
-		signer:         workerSigner,
 		userID:         identity.UserID,
 		sessionID:      identity.SessionID,
 		pid:            parentProcessID,
@@ -392,13 +378,6 @@ func (r *windowsWorkerDaemonRelay) connectDaemon() (net.Conn, error) {
 	}
 	if !sameExecutable {
 		return nil, E.New("named pipe server daemon executable was replaced")
-	}
-	signer, err := authenticodeSigner(processImageFinalPath, processImage)
-	if err != nil {
-		return nil, E.Cause(err, "authenticate daemon named pipe server")
-	}
-	if !bytes.Equal(signer, r.parent.signer) {
-		return nil, E.New("daemon server and worker have different signing certificates")
 	}
 	waitResult, err := windows.WaitForSingleObject(process, 0)
 	if err != nil {

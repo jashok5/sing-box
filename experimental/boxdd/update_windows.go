@@ -3,15 +3,11 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"path/filepath"
 	"strings"
 	"unsafe"
 
-	"github.com/sagernet/sing-box/common/badversion"
-	C "github.com/sagernet/sing-box/constant"
-	"github.com/sagernet/sing-box/experimental/libbox"
 	E "github.com/sagernet/sing/common/exceptions"
 
 	"github.com/tailscale/go-winio"
@@ -22,82 +18,13 @@ import (
 
 const (
 	updateInstallerDesktop = `winsta0\default`
-	updateProductName      = "sing-box"
 	seTcbPrivilege         = "SeTcbPrivilege"
 	seAssignPrimaryToken   = "SeAssignPrimaryTokenPrivilege"
 	seIncreaseQuota        = "SeIncreaseQuotaPrivilege"
 )
 
 func (d *Daemon) installUpdate(identity peerIdentity, installerPath string) (*InstallUpdateResponse, error) {
-	if installerPath == "" {
-		return nil, status.Error(codes.InvalidArgument, "missing update installer path")
-	}
-	platform := d.platform.(*windowsPlatformInterface)
-	platform.updateAccess.Lock()
-	if platform.updateInProgress {
-		platform.updateAccess.Unlock()
-		return nil, status.Error(codes.Aborted, "update installation is already in progress")
-	}
-	platform.updateInProgress = true
-	platform.updateAccess.Unlock()
-	started := false
-	defer func() {
-		if started {
-			return
-		}
-		platform.updateAccess.Lock()
-		platform.updateInProgress = false
-		platform.updateAccess.Unlock()
-	}()
-
-	installer, err := openLockedExecutable(installerPath)
-	if err != nil {
-		return nil, E.Cause(err, "open update installer")
-	}
-	defer windows.CloseHandle(installer)
-	installerFinalPath, err := finalWindowsPath(installer)
-	if err != nil {
-		return nil, E.Cause(err, "resolve update installer")
-	}
-	installerIdentity, err := windowsExecutableIdentity(installerFinalPath)
-	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, E.Cause(err, "read update installer identity").Error())
-	}
-	if installerIdentity.productName != updateProductName {
-		return nil, status.Error(codes.InvalidArgument, "update executable is not a sing-box installer")
-	}
-	err = validateNSISExecutable(installerFinalPath)
-	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, E.Cause(err, "update executable is not a sing-box installer").Error())
-	}
-	installerSigner, err := authenticodeSigner(installerFinalPath, installer)
-	if err != nil {
-		return nil, E.Cause(err, "authenticate update installer")
-	}
-	if !bytes.Equal(installerSigner, platform.daemonSigner) {
-		return &InstallUpdateResponse{Result: InstallUpdateResult_INSTALL_UPDATE_RESULT_SIGNER_MISMATCH}, nil
-	}
-	if !badversion.IsValid(installerIdentity.version) {
-		return nil, status.Error(codes.InvalidArgument, "update installer has an invalid version")
-	}
-	if !libbox.CompareSemver(installerIdentity.version, C.Version) {
-		return &InstallUpdateResponse{Result: InstallUpdateResult_INSTALL_UPDATE_RESULT_NOT_NEWER}, nil
-	}
-	installerProcess, err := launchUpdateInstaller(installerFinalPath, identity.SessionID)
-	if err != nil {
-		return nil, E.Cause(err, "launch update installer")
-	}
-	started = true
-	go platform.waitUpdateInstaller(installerProcess)
-	return &InstallUpdateResponse{Result: InstallUpdateResult_INSTALL_UPDATE_RESULT_STARTED}, nil
-}
-
-func (p *windowsPlatformInterface) waitUpdateInstaller(process windows.Handle) {
-	defer windows.CloseHandle(process)
-	_, _ = windows.WaitForSingleObject(process, windows.INFINITE)
-	p.updateAccess.Lock()
-	p.updateInProgress = false
-	p.updateAccess.Unlock()
+	return nil, status.Error(codes.Unimplemented, "daemon-assisted update installation requires signed installers")
 }
 
 type windowsExecutableVersionIdentity struct {

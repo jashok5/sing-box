@@ -3,7 +3,6 @@
 package main
 
 import (
-	"bytes"
 	"crypto/sha1"
 	"encoding/binary"
 	"fmt"
@@ -45,21 +44,6 @@ func secureWindowsInstallation(executablePath string, allowUnsafeInstallation bo
 		return "", E.Cause(err, "open installed application")
 	}
 	defer windows.CloseHandle(applicationExecutable)
-	daemonSigner, err := authenticodeSigner(daemonPath, daemonExecutable)
-	if err != nil {
-		return "", E.Cause(err, "authenticate installed daemon")
-	}
-	applicationFinalPath, err := finalWindowsPath(applicationExecutable)
-	if err != nil {
-		return "", err
-	}
-	applicationSigner, err := authenticodeSigner(applicationFinalPath, applicationExecutable)
-	if err != nil {
-		return "", E.Cause(err, "authenticate installed application")
-	}
-	if !bytes.Equal(daemonSigner, applicationSigner) {
-		return "", E.New("installed application and daemon have different signing certificates")
-	}
 	if allowUnsafeInstallation {
 		return daemonPath, nil
 	}

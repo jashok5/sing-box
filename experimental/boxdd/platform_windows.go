@@ -34,7 +34,6 @@ type windowsPlatformInterface struct {
 	access             sync.Mutex
 	updateAccess       sync.Mutex
 	updateInProgress   bool
-	daemonSigner       []byte
 	ownerUserID        string
 	sessionID          uint32
 	token              windows.Token

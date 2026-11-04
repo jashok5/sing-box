@@ -3,7 +3,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"net"
@@ -23,13 +22,12 @@ import (
 
 const (
 	daemonExecutableName      = "sing-box-daemon.exe"
-	applicationExecutableName = "sing-box.exe"
+	applicationExecutableName = "EasySSR.exe"
 	workerPipePrefix          = `\\.\pipe\sing-box-worker.`
 )
 
 type windowsTransportCredentials struct {
 	daemon                  *Daemon
-	daemonSigner            []byte
 	daemonExecutable        windows.Handle
 	expectedWorkerPath      string
 	expectedApplicationPath string
@@ -60,7 +58,6 @@ func platformServerOptions(daemon *Daemon) ([]grpc.ServerOption, error) {
 	if err != nil {
 		return nil, err
 	}
-	daemon.platform.(*windowsPlatformInterface).daemonSigner = transportCredentials.daemonSigner
 	return []grpc.ServerOption{grpc.Creds(transportCredentials)}, nil
 }
 
@@ -134,13 +131,6 @@ func (c *windowsTransportCredentials) serverHandshake(rawConnection net.Conn) (n
 	}
 	if !sameExecutable {
 		return nil, nil, E.New("named pipe client worker executable was replaced")
-	}
-	workerSigner, err := authenticodeSigner(processImageFinalPath, processImage)
-	if err != nil {
-		return nil, nil, E.Cause(err, "authenticate sing-box worker")
-	}
-	if !bytes.Equal(workerSigner, c.daemonSigner) {
-		return nil, nil, E.New("sing-box worker and daemon have different signing certificates")
 	}
 	parentProcessID, err := processParentID(process)
 	if err != nil {
@@ -219,13 +209,6 @@ func (c *windowsTransportCredentials) serverHandshake(rawConnection net.Conn) (n
 	if err != nil {
 		return nil, nil, err
 	}
-	applicationSigner, err := authenticodeSigner(parentImageFinalPath, parentProcessImage)
-	if err != nil {
-		return nil, nil, E.Cause(err, "authenticate sing-box application")
-	}
-	if !bytes.Equal(applicationSigner, c.daemonSigner) {
-		return nil, nil, E.New("sing-box application and daemon have different signing certificates")
-	}
 	workerWaitResult, err := windows.WaitForSingleObject(process, 0)
 	if err != nil {
 		return nil, nil, err
@@ -268,7 +251,6 @@ func (c *windowsTransportCredentials) Info() credentials.ProtocolInfo {
 func (c *windowsTransportCredentials) Clone() credentials.TransportCredentials {
 	return &windowsTransportCredentials{
 		daemon:                  c.daemon,
-		daemonSigner:            c.daemonSigner,
 		daemonExecutable:        c.daemonExecutable,
 		expectedWorkerPath:      c.expectedWorkerPath,
 		expectedApplicationPath: c.expectedApplicationPath,
@@ -305,10 +287,6 @@ func (c *windowsTransportCredentials) initializeServerIdentity() error {
 	c.daemonExecutable = executable
 	c.expectedWorkerPath = finalPath
 	c.expectedApplicationPath = applicationPath
-	c.daemonSigner, err = authenticodeSigner(finalPath, executable)
-	if err != nil {
-		return E.Cause(err, "authenticate daemon executable")
-	}
 	keepExecutable = true
 	return nil
 }
