@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -88,6 +89,11 @@ func newDaemon() (*Daemon, error) {
 	daemon.RegisterStartedServiceServer(d.server, d.startedService)
 	daemon.RegisterManagedServiceServer(d.server, managedService)
 	RegisterDesktopServiceServer(d.server, &desktopService{daemon: d})
+	if listenAddress != "" {
+		RegisterApplicationServiceServer(d.server, &applicationService{
+			startedService: daemon.NewStartedService(daemon.ServiceOptions{Context: include.Context(context.Background())}),
+		})
+	}
 	healthServer := health.NewServer()
 	healthServer.SetServingStatus(daemon.StartedService_ServiceDesc.ServiceName, grpc_health_v1.HealthCheckResponse_SERVING)
 	healthServer.SetServingStatus(daemon.ManagedService_ServiceDesc.ServiceName, grpc_health_v1.HealthCheckResponse_SERVING)
@@ -101,6 +107,14 @@ func newDaemon() (*Daemon, error) {
 
 func (d *Daemon) listen() (net.Listener, error) {
 	if listenAddress != "" {
+		host, _, err := net.SplitHostPort(listenAddress)
+		if err != nil {
+			return nil, E.Cause(err, "parse development listen address")
+		}
+		address, err := netip.ParseAddr(host)
+		if err != nil || !address.IsLoopback() {
+			return nil, E.New("development daemon TCP listener must bind to a loopback IP address")
+		}
 		d.logger.Warn("listening on TCP address ", listenAddress, ": development only, no access control")
 		return net.Listen("tcp", listenAddress)
 	}
