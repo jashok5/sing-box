@@ -65,6 +65,9 @@ func platformServerOptions(daemon *Daemon) ([]grpc.ServerOption, error) {
 }
 
 func platformFallbackPeerIdentity(ctx context.Context) (peerIdentity, error) {
+	if listenAddress != "" {
+		return processIdentity(windows.CurrentProcess(), uint32(os.Getpid()))
+	}
 	return peerIdentity{}, E.New("missing Windows peer authentication")
 }
 

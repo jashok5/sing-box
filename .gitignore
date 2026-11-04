@@ -35,6 +35,10 @@ AGENTS.md
 /sing-box-lib-darwin-arm64.dylib
 /sing-box-lib-macos-amd64.dylib
 /sing-box-lib-macos-arm64.dylib
+/sing-box-amd64-daemon.exe
+/sing-box-arm64-daemon.exe
+/sing-box-amd64-daemon
+/sing-box-arm64-daemon
 *.h
 *.so
 *.dll
