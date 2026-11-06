@@ -15,8 +15,8 @@ import (
 )
 
 const (
-	defaultServiceWorkingDirectory = "/var/lib/sing-box-daemon"
-	serviceUnitName                = serviceName + ".service"
+	defaultServiceWorkingDirectory = "/var/lib/easyssr-daemon"
+	serviceUnitName                = "easyssr-daemon.service"
 )
 
 var commandServiceRestart = &cobra.Command{
